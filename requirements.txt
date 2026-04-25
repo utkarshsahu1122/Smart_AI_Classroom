@@ -1,0 +1,16 @@
+Flask
+Flask-SQLAlchemy
+qrcode
+Pillow
+langchain
+langchain-community
+langchain-core
+langchain-openai
+langchain-google-genai
+python-dotenv
+PyPDF2
+faiss-cpu
+sentence-transformers
+langchain-huggingface
+python-docx
+flask-cors

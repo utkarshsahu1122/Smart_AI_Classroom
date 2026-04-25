@@ -1,0 +1,93 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div style="text-align: center;">
+    <h2>Quiz Session {% if session.is_active %}<span style="color: #27ae60;">● Live</span>{% else %}<span style="color: #e74c3c;">● Ended</span>{% endif %}</h2>
+    <p>Session Code: <strong style="font-size: 1.5rem; color: #3498db;">{{ session.session_code }}</strong></p>
+
+    <div style="margin: 2rem 0;">
+        <p>Ask students to scan the QR below to join the quiz:</p>
+        <img src="{{ url_for('static', filename=session.qr_code_path) }}" alt="QR Code" style="width: 250px; height: 250px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: inline-block;">
+    </div>
+
+    <p>Timer: <em>{{ session.timer_minutes }} minutes</em> &nbsp;|&nbsp; Questions in Pool: <strong>{{ session.questions | length }}</strong></p>
+
+    <!-- Action Buttons -->
+    <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+        <a href="{{ url_for('faculty.dashboard') }}" style="color: #3498db; text-decoration: none; padding: 10px 20px; border: 1px solid #3498db; border-radius: 5px;">&larr; Create Another Session</a>
+
+        {% if session.is_active %}
+        <form method="POST" action="{{ url_for('faculty.end_session', session_code=session.session_code) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to END this session? All pending students will be auto-submitted.');">
+            <button type="submit" style="background: #e74c3c; color: white; border: none; padding: 10px 20px; font-size: 1rem; border-radius: 5px; cursor: pointer;">
+                ⛔ End Session
+            </button>
+        </form>
+        {% endif %}
+
+        <a href="{{ url_for('faculty.download_report', session_code=session.session_code) }}" style="background: #2ecc71; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px;">
+            📄 Download Report
+        </a>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    <div style="margin-top: 1.5rem;">
+    {% for message in messages %}
+      <p style="color: #e74c3c; text-align: center; font-weight: 600;">{{ message }}</p>
+    {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- Live Student Table -->
+<div style="margin-top: 2rem;">
+    <h3 style="border-bottom: 2px solid #eee; padding-bottom: 0.5rem;">Students ({{ students | length }})</h3>
+    {% if students %}
+    <table style="width: 100%; border-collapse: collapse; margin-top: 1rem;">
+        <thead>
+            <tr style="background: #f8f9fa; text-align: left;">
+                <th style="padding: 10px; border-bottom: 2px solid #ddd;">#</th>
+                <th style="padding: 10px; border-bottom: 2px solid #ddd;">Roll No</th>
+                <th style="padding: 10px; border-bottom: 2px solid #ddd;">Name</th>
+                <th style="padding: 10px; border-bottom: 2px solid #ddd;">Status</th>
+                <th style="padding: 10px; border-bottom: 2px solid #ddd;">Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in students %}
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 10px;">{{ loop.index }}</td>
+                <td style="padding: 10px; font-weight: 600;">{{ s.roll_no }}</td>
+                <td style="padding: 10px;">{{ s.name }}</td>
+                <td style="padding: 10px;">
+                    {% if s.submitted_at %}
+                        <span style="color: #27ae60; font-weight: 600;">✅ Submitted</span>
+                    {% elif s.is_logged_in %}
+                        <span style="color: #f39c12; font-weight: 600;">⏳ Taking Quiz...</span>
+                    {% else %}
+                        <span style="color: #999;">—</span>
+                    {% endif %}
+                </td>
+                <td style="padding: 10px;">
+                    {% if s.submitted_at %}
+                        <strong>{{ s.score }}/{{ s.assigned_questions | length }}</strong>
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #999; text-align: center; padding: 2rem;">No students have joined yet.</p>
+    {% endif %}
+</div>
+
+<!-- Auto-refresh the page every 10s while session is active to see new students -->
+{% if session.is_active %}
+<script>
+    setTimeout(function() { location.reload(); }, 10000);
+</script>
+{% endif %}
+{% endblock %}

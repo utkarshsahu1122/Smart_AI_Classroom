@@ -1,0 +1,81 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="header-section" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 1rem; margin-bottom: 2rem;">
+    <div>
+        <h2>Live Quiz Session</h2>
+        <p style="color: #666; margin: 0;">Student: <strong>{{ student.name }}</strong> ({{ student.roll_no }})</p>
+    </div>
+    <div style="background: #e74c3c; color: white; padding: 10px 20px; border-radius: 5px; font-weight: bold; font-size: 1.2rem;">
+        Time Left: <span id="timer">--:--</span>
+    </div>
+</div>
+
+<form id="quizForm" method="POST" action="{{ url_for('student.quiz') }}">
+    {% for q in questions %}
+    <div style="background: white; padding: 1.5rem; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 1.5rem; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <p style="font-weight: 600; font-size: 1.1rem; margin-top: 0;">{{ loop.index }}. {{ q.text }}</p>
+
+        {% if q.type == 'mcq' %}
+            {% for opt in q.options %}
+            <label style="display: block; margin-bottom: 0.5rem; cursor: pointer; background: #fafafa; padding: 10px; border-radius: 5px; border: 1px solid #eee;">
+                <input type="radio" name="q_{{ q.id }}" value="{{ opt }}" required>
+                {{ opt }}
+            </label>
+            {% endfor %}
+        {% else %}
+            <input type="text" name="q_{{ q.id }}" required style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 5px; margin-top: 0.5rem; box-sizing: border-box;" placeholder="Type your answer here...">
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <button type="submit" style="background: #3498db; color: white; border: none; padding: 15px 30px; font-size: 1.1rem; font-weight: bold; border-radius: 5px; cursor: pointer; display: block; width: 100%; transition: background 0.3s; margin-top: 2rem;">
+        Submit Quiz Final Answers
+    </button>
+</form>
+
+<div id="quizTimerData" data-minutes="{{ session.timer_minutes }}" style="display:none;"></div>
+
+<script>
+    // === Timer ===
+    const timerDataElement = document.getElementById('quizTimerData');
+    const timerMinutes = parseInt(timerDataElement.getAttribute('data-minutes'), 10) || 10;
+    let timeRemaining = timerMinutes * 60;
+    const timerDisplay = document.getElementById('timer');
+    const quizForm = document.getElementById('quizForm');
+
+    function updateTimer() {
+        const minutes = Math.floor(timeRemaining / 60);
+        let seconds = timeRemaining % 60;
+
+        seconds = seconds < 10 ? '0' + seconds : seconds;
+        timerDisplay.textContent = minutes + ':' + seconds;
+
+        if (timeRemaining <= 0) {
+            clearInterval(timerInterval);
+            alert("Time's up! Submitting your quiz automatically.");
+            quizForm.submit();
+        }
+        timeRemaining--;
+    }
+
+    updateTimer();
+    const timerInterval = setInterval(updateTimer, 1000);
+
+    // === Poll for session end (faculty clicked "End Session") ===
+    function checkSessionStatus() {
+        fetch('/student/check_session')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (!data.active) {
+                    clearInterval(timerInterval);
+                    clearInterval(sessionPoll);
+                    alert("The faculty has ended this session. Your quiz is being submitted.");
+                    quizForm.submit();
+                }
+            })
+            .catch(function() {});
+    }
+
+    const sessionPoll = setInterval(checkSessionStatus, 5000);
+</script>
+{% endblock %}

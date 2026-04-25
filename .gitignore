@@ -1,0 +1,36 @@
+# ===========================
+# Python / Backend
+# ===========================
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.db
+
+# Flask instance folder (contains SQLite DB)
+instance/
+
+# Uploaded files & generated data (recreated at runtime)
+app/static/temp_uploads/*
+!app/static/temp_uploads/.gitkeep
+app/static/vectorstores/
+
+# ===========================
+# Frontend (React / Node)
+# ===========================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ===========================
+# IDE / OS
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+.DS_Store

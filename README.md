@@ -113,7 +113,6 @@ smart-classroom-ai/
 │   ├── static/
 │   │   ├── temp_uploads/         # Uploaded PDFs & QR codes
 │   │   └── vectorstores/         # FAISS vector indices per session
-│   └── templates/                # (Legacy Jinja2 templates, kept for reference)
 │
 ├── frontend/                     # React Frontend (Vite)
 │   ├── index.html

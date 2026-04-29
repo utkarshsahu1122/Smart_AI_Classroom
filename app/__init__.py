@@ -20,16 +20,11 @@ def create_app():
     app.register_blueprint(student.bp)
     app.register_blueprint(student_doubt.bp)
 
-    # Serve React Frontend in Production
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def serve_frontend(path):
-        from flask import send_from_directory
-        dist_dir = os.path.abspath(os.path.join(app.root_path, '..', 'frontend', 'dist'))
-        if path != "" and os.path.exists(os.path.join(dist_dir, path)):
-            return send_from_directory(dist_dir, path)
-        else:
-            # SPA fallback: always serve index.html for unknown frontend routes
-            return send_from_directory(dist_dir, 'index.html')
+    # Root Health Check for Cloud Run
+    @app.route('/')
+    def home():
+        return {"status": "Smart Classroom API is running"}
+
+    print("Flask app started successfully")
 
     return app

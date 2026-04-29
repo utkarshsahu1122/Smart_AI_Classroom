@@ -14,9 +14,13 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
-        from .routes import faculty, student
+        from .routes import faculty, student, student_doubt
+        # Import models so SQLAlchemy creates all tables
+        from .models import schemas, chat
+
         app.register_blueprint(faculty.bp)
         app.register_blueprint(student.bp)
+        app.register_blueprint(student_doubt.bp)
 
         db.create_all()
 

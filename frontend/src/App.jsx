@@ -5,6 +5,7 @@ import SessionDetails from './pages/SessionDetails'
 import StudentLogin from './pages/StudentLogin'
 import QuizView from './pages/QuizView'
 import QuizResult from './pages/QuizResult'
+import StudentDoubtSolver from './pages/StudentDoubtSolver'
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
           <Route path="/student/login" element={<StudentLogin />} />
           <Route path="/student/quiz" element={<QuizView />} />
           <Route path="/student/result" element={<QuizResult />} />
+          <Route path="/student/doubts" element={<StudentDoubtSolver />} />
         </Routes>
       </main>
     </div>

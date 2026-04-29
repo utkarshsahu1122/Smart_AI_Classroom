@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 function StudentLogin() {
@@ -9,6 +9,15 @@ function StudentLogin() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const navigate = useNavigate()
+
+  // If a quiz is already active, redirect straight to it
+  useEffect(() => {
+    const activeQuiz = sessionStorage.getItem('active_quiz_state')
+    const studentId = sessionStorage.getItem('student_id')
+    if (activeQuiz && studentId) {
+      navigate('/student/quiz')
+    }
+  }, [navigate])
 
   const handleLogin = async (e) => {
     e.preventDefault()

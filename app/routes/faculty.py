@@ -4,6 +4,7 @@ from io import BytesIO
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app, send_file, url_for
 from werkzeug.utils import secure_filename
+from ..services.timezone import to_local
 from ..models.database import db
 from ..models.schemas import QuizSession, QuizQuestion, Student
 from ..services.qr_service import generate_qr_for_session
@@ -39,6 +40,20 @@ def upload_pdf():
     from ..services.rag_engine import process_pdf_and_generate_pool
     quiz_data = process_pdf_and_generate_pool(file_path, session_code)
 
+    # VALIDATION: Never create a session with 0 questions
+    if not quiz_data or len(quiz_data) < 5:
+        # Clean up the uploaded file
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+        count = len(quiz_data) if quiz_data else 0
+        print(f"[Faculty] REJECTED session {session_code}: only {count} questions generated")
+        return jsonify({
+            'success': False,
+            'error': f'Question generation failed — only {count} questions could be generated. This can happen if the PDF is too short, image-heavy, or the AI service is temporarily unavailable. Please try uploading again.'
+        }), 422
+
     qr_path = generate_qr_for_session(session_code)
 
     new_session = QuizSession(
@@ -46,7 +61,7 @@ def upload_pdf():
         pdf_filename=unique_filename,
         qr_code_path=qr_path,
         timer_minutes=10,
-        questions_generated=bool(quiz_data),
+        questions_generated=True,
         is_active=True
     )
     db.session.add(new_session)
@@ -89,7 +104,7 @@ def session_details(session_code):
             'session_code': quiz_session.session_code,
             'pdf_filename': quiz_session.pdf_filename,
             'qr_url': f"/static/{quiz_session.qr_code_path}" if quiz_session.qr_code_path else None,
-            'created_at': quiz_session.created_at.strftime('%d-%m-%Y %H:%M'),
+            'created_at': to_local(quiz_session.created_at),
             'timer_minutes': quiz_session.timer_minutes,
             'is_active': quiz_session.is_active,
             'questions_count': len(quiz_session.questions),
@@ -102,7 +117,9 @@ def session_details(session_code):
             'total': len(s.assigned_questions),
             'is_logged_in': s.is_logged_in,
             'submitted': s.submitted_at is not None,
-            'submitted_at': s.submitted_at.strftime('%d-%m-%Y %H:%M') if s.submitted_at else None,
+            'submitted_at': to_local(s.submitted_at) if s.submitted_at else None,
+            'unfair_means': s.unfair_means or False,
+            'warning_count': s.warning_count or 0,
         } for s in students]
     })
 
@@ -159,7 +176,7 @@ def download_report(session_code):
     info_data = [
         ('Session Code', quiz_session.session_code),
         ('PDF Document', quiz_session.pdf_filename),
-        ('Created', quiz_session.created_at.strftime('%d-%m-%Y %H:%M')),
+        ('Created', to_local(quiz_session.created_at)),
         ('Status', 'Ended' if not quiz_session.is_active else 'Active'),
         ('Total Students', str(len(students))),
     ]
@@ -176,10 +193,10 @@ def download_report(session_code):
     doc.add_heading('Student Results', level=2)
 
     if students:
-        result_table = doc.add_table(rows=1, cols=5, style='Medium Shading 1 Accent 1')
+        result_table = doc.add_table(rows=1, cols=6, style='Medium Shading 1 Accent 1')
         result_table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-        headers = ['S.No', 'Roll No', 'Name', 'Score', 'Submitted At']
+        headers = ['S.No', 'Roll No', 'Name', 'Score', 'Submitted At', 'Status']
         for i, header in enumerate(headers):
             cell = result_table.rows[0].cells[i]
             cell.text = header
@@ -193,8 +210,9 @@ def download_report(session_code):
         for idx, student in enumerate(students, 1):
             row = result_table.add_row()
             total_q = len(student.assigned_questions) or 10
-            submitted = student.submitted_at.strftime('%d-%m-%Y %H:%M') if student.submitted_at else 'Not Submitted'
-            values = [str(idx), student.roll_no, student.name, f"{student.score}/{total_q}", submitted]
+            submitted = to_local(student.submitted_at) if student.submitted_at else 'Not Submitted'
+            status = 'UNFAIR MEANS' if student.unfair_means else 'Fair'
+            values = [str(idx), student.roll_no, student.name, f"{student.score}/{total_q}", submitted, status]
             for i, val in enumerate(values):
                 cell = row.cells[i]
                 cell.text = val
@@ -223,7 +241,7 @@ def download_report(session_code):
             stats_para.add_run(f'{pass_count}/{len(scores)} ({pass_count/len(scores)*100:.0f}%)')
 
     doc.add_paragraph('')
-    footer = doc.add_paragraph(f'Report generated on {datetime.utcnow().strftime("%d-%m-%Y %H:%M")} UTC')
+    footer = doc.add_paragraph(f'Report generated on {to_local(datetime.utcnow())} IST')
     footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     for run in footer.runs:
         run.font.size = Pt(8)

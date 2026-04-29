@@ -24,6 +24,11 @@ class Student(db.Model):
     submitted_at = db.Column(db.DateTime, nullable=True)
     is_logged_in = db.Column(db.Boolean, default=False)   # Prevents credential reuse
 
+    # Proctoring fields
+    warning_count = db.Column(db.Integer, default=0)
+    unfair_means = db.Column(db.Boolean, default=False)
+    submission_reason = db.Column(db.String(50), default='manual')  # manual, time_up, session_ended, proctoring
+
     assigned_questions = db.relationship('StudentQuestion', backref='student', lazy=True)
 
 class QuizQuestion(db.Model):

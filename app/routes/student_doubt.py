@@ -5,7 +5,6 @@ Protected by JWT authentication.
 
 from io import BytesIO
 from flask import Blueprint, request, jsonify, send_file
-from ..models.database import db
 from ..services.doubt_solver import (
     register_profile,
     authenticate_profile,
@@ -18,7 +17,10 @@ from ..services.doubt_solver import (
 )
 from ..services.auth import generate_token, auth_required
 from ..services.pdf_export import generate_chat_pdf
-from ..models.chat import StudentProfile, StudentDocument, DoubtChatSession
+from ..models.chat import (
+    get_document_by_id, get_documents_by_student,
+    get_doubt_session_by_id,
+)
 
 bp = Blueprint('student_doubt', __name__, url_prefix='/api/doubt')
 
@@ -44,13 +46,13 @@ def register():
 
     try:
         profile = register_profile(name, roll_no, password)
-        token = generate_token(profile.id, profile.roll_no)
+        token = generate_token(profile['id'], profile['roll_no'])
         return jsonify({
             'success': True,
             'token': token,
-            'student_id': profile.id,
-            'name': profile.name,
-            'roll_no': profile.roll_no,
+            'student_id': profile['id'],
+            'name': profile['name'],
+            'roll_no': profile['roll_no'],
         })
     except ValueError as e:
         return jsonify({'success': False, 'error': str(e)}), 409
@@ -73,21 +75,22 @@ def login():
     if not profile:
         return jsonify({'success': False, 'error': 'Invalid Roll No or Password'}), 401
 
-    token = generate_token(profile.id, profile.roll_no)
+    token = generate_token(profile['id'], profile['roll_no'])
 
     # Get their documents
-    docs = [{
-        'id': d.id,
-        'filename': d.original_filename,
-    } for d in profile.documents]
+    docs = get_documents_by_student(profile['id'])
+    doc_list = [{
+        'id': d['id'],
+        'filename': d['original_filename'],
+    } for d in docs]
 
     return jsonify({
         'success': True,
         'token': token,
-        'student_id': profile.id,
-        'name': profile.name,
-        'roll_no': profile.roll_no,
-        'documents': docs,
+        'student_id': profile['id'],
+        'name': profile['name'],
+        'roll_no': profile['roll_no'],
+        'documents': doc_list,
     })
 
 
@@ -108,8 +111,8 @@ def upload_pdf(current_student_id):
         doc = process_student_pdf(current_student_id, file, file.filename)
         return jsonify({
             'success': True,
-            'document_id': doc.id,
-            'filename': doc.original_filename,
+            'document_id': doc['id'],
+            'filename': doc['original_filename'],
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -125,16 +128,16 @@ def create_chat(current_student_id):
     if not document_id:
         return jsonify({'success': False, 'error': 'document_id required'}), 400
 
-    doc = StudentDocument.query.get(document_id)
-    if not doc or doc.student_id != current_student_id:
+    doc = get_document_by_id(document_id)
+    if not doc or doc['student_id'] != current_student_id:
         return jsonify({'success': False, 'error': 'Document not found or access denied'}), 404
 
     session = create_chat_session(current_student_id, document_id)
 
     return jsonify({
         'success': True,
-        'session_id': session.id,
-        'title': session.title,
+        'session_id': session['id'],
+        'title': session['title'],
     })
 
 
@@ -169,7 +172,7 @@ def chat_history(current_student_id):
     return jsonify({'success': True, 'sessions': sessions})
 
 
-@bp.route('/chat/<int:session_id>/messages')
+@bp.route('/chat/<session_id>/messages')
 @auth_required
 def chat_messages(session_id, current_student_id):
     """Get all messages in a chat session (ownership enforced)."""
@@ -186,15 +189,15 @@ def chat_messages(session_id, current_student_id):
     })
 
 
-@bp.route('/chat/<int:session_id>/download')
+@bp.route('/chat/<session_id>/download')
 @auth_required
 def download_summary(session_id, current_student_id):
     """Download a PDF summary of the chat session."""
-    session = DoubtChatSession.query.get(session_id)
+    session = get_doubt_session_by_id(session_id)
     if not session:
         return jsonify({'success': False, 'error': 'Session not found'}), 404
 
-    if session.student_id != current_student_id:
+    if session['student_id'] != current_student_id:
         return jsonify({'success': False, 'error': 'Access denied'}), 403
 
     buffer = generate_chat_pdf(session)
@@ -210,16 +213,15 @@ def download_summary(session_id, current_student_id):
 @auth_required
 def list_documents(current_student_id):
     """List all uploaded PDFs for the authenticated student."""
-    docs = StudentDocument.query.filter_by(student_id=current_student_id)\
-        .order_by(StudentDocument.uploaded_at.desc()).all()
+    docs = get_documents_by_student(current_student_id)
 
     from ..services.timezone import to_local
     return jsonify({
         'success': True,
         'documents': [{
-            'id': d.id,
-            'filename': d.original_filename,
-            'uploaded_at': to_local(d.uploaded_at),
+            'id': d['id'],
+            'filename': d['original_filename'],
+            'uploaded_at': to_local(d['uploaded_at']),
         } for d in docs]
     })
 

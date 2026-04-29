@@ -1,6 +1,7 @@
 """
 PDF Export Service — generates clean PDF summaries of doubt chats.
 Uses reportlab for PDF generation.
+Now works with MongoDB document dicts instead of SQLAlchemy objects.
 """
 
 from io import BytesIO
@@ -12,11 +13,15 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from .timezone import to_local, to_local_short, utc_now
+from ..models.chat import (
+    get_profile_by_id, get_document_by_id, get_messages_by_session,
+)
 
 
-def generate_chat_pdf(session) -> BytesIO:
+def generate_chat_pdf(session_doc) -> BytesIO:
     """
     Generate a clean, structured PDF summary of a doubt chat session.
+    Accepts a MongoDB session document (dict).
     Returns a BytesIO buffer ready to send.
     """
     buffer = BytesIO()
@@ -72,12 +77,20 @@ def generate_chat_pdf(session) -> BytesIO:
         subtitle_style
     ))
 
+    # Fetch related data from MongoDB
+    owner = get_profile_by_id(session_doc['student_id'])
+    document = get_document_by_id(session_doc.get('document_id'))
+    messages = get_messages_by_session(session_doc['id'])
+
+    owner_name = f"{owner['name']} ({owner['roll_no']})" if owner else "Unknown"
+    doc_name = document['original_filename'] if document else "N/A"
+
     # Info table
     info_data = [
-        ["Student", f"{session.owner.name} ({session.owner.roll_no})"],
-        ["Document", session.document.original_filename if session.document else "N/A"],
-        ["Chat Started", to_local(session.created_at)],
-        ["Total Messages", str(len(session.messages))],
+        ["Student", owner_name],
+        ["Document", doc_name],
+        ["Chat Started", to_local(session_doc.get('created_at'))],
+        ["Total Messages", str(len(messages))],
     ]
     info_table = Table(info_data, colWidths=[35*mm, 130*mm])
     info_table.setStyle(TableStyle([
@@ -94,15 +107,15 @@ def generate_chat_pdf(session) -> BytesIO:
     # Chat messages
     elements.append(Paragraph("Conversation", heading_style))
 
-    for msg in session.messages:
-        time_str = to_local_short(msg.created_at)
+    for msg in messages:
+        time_str = to_local_short(msg.get('created_at'))
 
-        if msg.role == "user":
-            text = f"[{time_str}] Student: {_escape(msg.content)}"
+        if msg['role'] == "user":
+            text = f"[{time_str}] Student: {_escape(msg['content'])}"
             elements.append(Paragraph(text, student_style))
         else:
             # Truncate very long AI responses for the summary
-            content = msg.content
+            content = msg['content']
             if len(content) > 1500:
                 content = content[:1500] + "... (truncated for summary)"
             text = f"[{time_str}] AI Tutor: {_escape(content)}"

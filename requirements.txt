@@ -1,5 +1,5 @@
 Flask
-Flask-SQLAlchemy
+flask-cors
 qrcode
 Pillow
 langchain
@@ -13,11 +13,10 @@ faiss-cpu
 sentence-transformers
 langchain-huggingface
 python-docx
-flask-cors
 langgraph
 langchain-text-splitters
 bcrypt
 PyJWT
 reportlab
 gunicorn
-psycopg2-binary
+pymongo

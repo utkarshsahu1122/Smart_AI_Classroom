@@ -56,7 +56,7 @@ def _quiz_load_pdf(state: QuizGenState) -> dict:
     try:
         loader = PyPDFLoader(state["pdf_path"])
         docs = loader.load()
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
         chunks = splitter.split_documents(docs)
         n = len(docs)
         target = 30 if n <= 3 else 50 if n <= 10 else 70 if n <= 25 else 100
@@ -78,7 +78,11 @@ def _quiz_build_vectorstore(state: QuizGenState) -> dict:
         os.makedirs(vs_path, exist_ok=True)
         vectorstore.save_local(vs_path)
         print(f"[Agent A] Vectorstore saved to {vs_path}")
-        return {"vectorstore_dir": vs_path}
+        
+        # Free memory immediately
+        del vectorstore
+        
+        return {"vectorstore_dir": vs_path, "chunks": []}  # Clear chunks from state
     except Exception as e:
         print(f"[Agent A] Error in _quiz_build_vectorstore: {e}")
         return {"error": str(e)}
@@ -94,23 +98,28 @@ def _quiz_retrieve_context(state: QuizGenState) -> dict:
             state["vectorstore_dir"], embeddings,
             allow_dangerous_deserialization=True
         )
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
         topics = [
             "key concepts and definitions",
-            "important principles and theories",
-            "examples and applications",
-            "comparisons and differences",
-            "processes and procedures",
-            "advantages and limitations",
-            "summary and conclusions",
+            "important principles and examples",
+            "processes and conclusions",
         ]
         unique_chunks = []
         for topic in topics:
             for doc in retriever.invoke(topic):
                 if doc.page_content not in unique_chunks:
                     unique_chunks.append(doc.page_content)
+        
+        # Limit to top 5 chunks max to avoid memory overload and timeouts
+        unique_chunks = unique_chunks[:5]
+        
         context = "\n\n---\n\n".join(unique_chunks)
         print(f"[Agent A] Retrieved {len(unique_chunks)} unique context chunks")
+        
+        # Free memory
+        del vectorstore
+        del retriever
+        
         return {"context": context}
     except Exception as e:
         print(f"[Agent A] Error in _quiz_retrieve_context: {e}")
@@ -291,6 +300,11 @@ def _doubt_retrieve(state: DoubtSolverState) -> dict:
         # Keep top 3 as source snippets (truncated)
         sources = [c[:200] + "..." if len(c) > 200 else c for c in chunks[:3]]
         print(f"[Agent B] Retrieved {len(chunks)} chunks for query")
+        
+        # Free memory
+        del vectorstore
+        del retriever
+        
         return {"retrieved_chunks": chunks, "context": context, "sources": sources}
     except Exception as e:
         return {"error": str(e)}

@@ -6,6 +6,8 @@ function FacultyDashboard() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [dragover, setDragover] = useState(false)
+  const [mcqWeight, setMcqWeight] = useState(70)
+  const [fillWeight, setFillWeight] = useState(30)
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
 
@@ -42,6 +44,8 @@ function FacultyDashboard() {
 
     const formData = new FormData()
     formData.append('pdf_file', file)
+    formData.append('mcq_weight', mcqWeight)
+    formData.append('fill_weight', fillWeight)
 
     try {
       const res = await fetch((import.meta.env.VITE_API_URL || "") + '/api/faculty/upload', {
@@ -102,6 +106,41 @@ function FacultyDashboard() {
               <p className="file-selected">✅ {file.name} ({(file.size / 1024).toFixed(0)} KB)</p>
             )}
           </div>
+
+          {file && (
+            <div className="weight-settings mt-2" style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <div className="form-group" style={{ width: '150px' }}>
+                <label>MCQs Weight (%)</label>
+                <input 
+                  type="number" 
+                  className="input" 
+                  value={mcqWeight} 
+                  onChange={(e) => {
+                    let val = parseInt(e.target.value) || 0;
+                    if (val > 100) val = 100;
+                    if (val < 0) val = 0;
+                    setMcqWeight(val);
+                    setFillWeight(100 - val);
+                  }}
+                />
+              </div>
+              <div className="form-group" style={{ width: '150px' }}>
+                <label>Fill-in-Blanks Weight (%)</label>
+                <input 
+                  type="number" 
+                  className="input" 
+                  value={fillWeight} 
+                  onChange={(e) => {
+                    let val = parseInt(e.target.value) || 0;
+                    if (val > 100) val = 100;
+                    if (val < 0) val = 0;
+                    setFillWeight(val);
+                    setMcqWeight(100 - val);
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="text-center mt-3">
             <button

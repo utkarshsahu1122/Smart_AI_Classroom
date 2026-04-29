@@ -73,7 +73,7 @@ function QuizView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: parseInt(studentId),
+          student_id: studentId,
           answers,
           reason,
         }),
@@ -111,7 +111,7 @@ function QuizView() {
       const res = await fetch('/api/student/proctor/warn', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_id: parseInt(studentId), reason }),
+        body: JSON.stringify({ student_id: studentId, reason }),
       })
       const data = await res.json()
 

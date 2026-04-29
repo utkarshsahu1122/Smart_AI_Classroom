@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: smart-classroom-app
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn run:app --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smart-classroom-db
+          property: connectionString
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+
+databases:
+  - name: smart-classroom-db
+    databaseName: smartclassroom
+    user: admin

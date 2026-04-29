@@ -44,7 +44,7 @@ function FacultyDashboard() {
     formData.append('pdf_file', file)
 
     try {
-      const res = await fetch('/api/faculty/upload', {
+      const res = await fetch((import.meta.env.VITE_API_URL || "") + '/api/faculty/upload', {
         method: 'POST',
         body: formData,
       })

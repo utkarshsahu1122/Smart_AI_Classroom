@@ -4,6 +4,7 @@ from io import BytesIO
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app, send_file, url_for
 from werkzeug.utils import secure_filename
+from ..services.timezone import to_local
 from ..models.database import db
 from ..models.schemas import QuizSession, QuizQuestion, Student
 from ..services.qr_service import generate_qr_for_session
@@ -39,6 +40,20 @@ def upload_pdf():
     from ..services.rag_engine import process_pdf_and_generate_pool
     quiz_data = process_pdf_and_generate_pool(file_path, session_code)
 
+    # VALIDATION: Never create a session with 0 questions
+    if not quiz_data or len(quiz_data) < 5:
+        # Clean up the uploaded file
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+        count = len(quiz_data) if quiz_data else 0
+        print(f"[Faculty] REJECTED session {session_code}: only {count} questions generated")
+        return jsonify({
+            'success': False,
+            'error': f'Question generation failed — only {count} questions could be generated. This can happen if the PDF is too short, image-heavy, or the AI service is temporarily unavailable. Please try uploading again.'
+        }), 422
+
     qr_path = generate_qr_for_session(session_code)
 
     new_session = QuizSession(
@@ -46,7 +61,7 @@ def upload_pdf():
         pdf_filename=unique_filename,
         qr_code_path=qr_path,
         timer_minutes=10,
-        questions_generated=bool(quiz_data),
+        questions_generated=True,
         is_active=True
     )
     db.session.add(new_session)
@@ -89,7 +104,7 @@ def session_details(session_code):
             'session_code': quiz_session.session_code,
             'pdf_filename': quiz_session.pdf_filename,
             'qr_url': f"/static/{quiz_session.qr_code_path}" if quiz_session.qr_code_path else None,
-            'created_at': quiz_session.created_at.strftime('%d-%m-%Y %H:%M'),
+            'created_at': to_local(quiz_session.created_at),
             'timer_minutes': quiz_session.timer_minutes,
             'is_active': quiz_session.is_active,
             'questions_count': len(quiz_session.questions),
@@ -102,7 +117,9 @@ def session_details(session_code):
             'total': len(s.assigned_questions),
             'is_logged_in': s.is_logged_in,
             'submitted': s.submitted_at is not None,
-            'submitted_at': s.submitted_at.strftime('%d-%m-%Y %H:%M') if s.submitted_at else None,
+            'submitted_at': to_local(s.submitted_at) if s.submitted_at else None,
+            'unfair_means': s.unfair_means or False,
+            'warning_count': s.warning_count or 0,
         } for s in students]
     })
 
@@ -137,11 +154,10 @@ def end_session(session_code):
 
 @bp.route('/session/<session_code>/report')
 def download_report(session_code):
-    """Generate and download a .docx Word report for the quiz session."""
-    from docx import Document
-    from docx.shared import Pt, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.enum.table import WD_TABLE_ALIGNMENT
+    """Generate and download a .csv Excel report for the quiz session."""
+    import csv
+    from io import StringIO
+    from flask import Response
 
     quiz_session = QuizSession.query.filter_by(session_code=session_code).first()
     if not quiz_session:
@@ -149,93 +165,61 @@ def download_report(session_code):
 
     students = Student.query.filter_by(session_id=quiz_session.id).order_by(Student.roll_no).all()
 
-    doc = Document()
+    si = StringIO()
+    cw = csv.writer(si)
 
-    title = doc.add_heading('Quiz Session Report', level=0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # --- Session Info ---
+    cw.writerow(['QUIZ SESSION REPORT'])
+    cw.writerow(['Session Code', quiz_session.session_code])
+    cw.writerow(['PDF Document', quiz_session.pdf_filename])
+    cw.writerow(['Created At', to_local(quiz_session.created_at)])
+    cw.writerow(['Status', 'Ended' if not quiz_session.is_active else 'Active'])
+    cw.writerow(['Total Students', len(students)])
+    cw.writerow([])  # Blank row
 
-    doc.add_heading('Session Information', level=2)
-    info_table = doc.add_table(rows=5, cols=2, style='Light Shading Accent 1')
-    info_data = [
-        ('Session Code', quiz_session.session_code),
-        ('PDF Document', quiz_session.pdf_filename),
-        ('Created', quiz_session.created_at.strftime('%d-%m-%Y %H:%M')),
-        ('Status', 'Ended' if not quiz_session.is_active else 'Active'),
-        ('Total Students', str(len(students))),
-    ]
-    for i, (label, value) in enumerate(info_data):
-        info_table.rows[i].cells[0].text = label
-        info_table.rows[i].cells[1].text = value
-        for cell in info_table.rows[i].cells:
-            for paragraph in cell.paragraphs:
-                for run in paragraph.runs:
-                    run.font.size = Pt(11)
-
-    doc.add_paragraph('')
-
-    doc.add_heading('Student Results', level=2)
+    # --- Student Results Table ---
+    cw.writerow(['S.No', 'Roll No', 'Name', 'Score', 'Total Assigned', 'Submitted At', 'Integrity Status', 'Proctor Warnings'])
 
     if students:
-        result_table = doc.add_table(rows=1, cols=5, style='Medium Shading 1 Accent 1')
-        result_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-
-        headers = ['S.No', 'Roll No', 'Name', 'Score', 'Submitted At']
-        for i, header in enumerate(headers):
-            cell = result_table.rows[0].cells[i]
-            cell.text = header
-            for paragraph in cell.paragraphs:
-                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                for run in paragraph.runs:
-                    run.bold = True
-                    run.font.size = Pt(11)
-                    run.font.color.rgb = RGBColor(255, 255, 255)
-
         for idx, student in enumerate(students, 1):
-            row = result_table.add_row()
-            total_q = len(student.assigned_questions) or 10
-            submitted = student.submitted_at.strftime('%d-%m-%Y %H:%M') if student.submitted_at else 'Not Submitted'
-            values = [str(idx), student.roll_no, student.name, f"{student.score}/{total_q}", submitted]
-            for i, val in enumerate(values):
-                cell = row.cells[i]
-                cell.text = val
-                for paragraph in cell.paragraphs:
-                    for run in paragraph.runs:
-                        run.font.size = Pt(10)
+            total_q = len(student.assigned_questions) or 20
+            submitted = to_local(student.submitted_at) if student.submitted_at else 'Not Submitted'
+            status = 'UNFAIR MEANS' if student.unfair_means else 'Fair'
+            
+            cw.writerow([
+                idx,
+                student.roll_no,
+                student.name,
+                student.score if student.submitted_at else '—',
+                total_q,
+                submitted,
+                status,
+                student.warning_count or 0
+            ])
     else:
-        doc.add_paragraph('No students participated in this session.', style='Intense Quote')
+        cw.writerow(['No students participated in this session.'])
 
-    doc.add_paragraph('')
+    cw.writerow([])  # Blank row
 
+    # --- Summary Statistics ---
     if students:
         scores = [s.score for s in students if s.submitted_at]
         if scores:
-            doc.add_heading('Summary Statistics', level=2)
-            total_q = 10
-            stats_para = doc.add_paragraph()
-            stats_para.add_run('Average Score: ').bold = True
-            stats_para.add_run(f'{sum(scores)/len(scores):.1f}/{total_q}\n')
-            stats_para.add_run('Highest Score: ').bold = True
-            stats_para.add_run(f'{max(scores)}/{total_q}\n')
-            stats_para.add_run('Lowest Score: ').bold = True
-            stats_para.add_run(f'{min(scores)}/{total_q}\n')
-            stats_para.add_run('Pass Rate (≥5): ').bold = True
-            pass_count = sum(1 for s in scores if s >= 5)
-            stats_para.add_run(f'{pass_count}/{len(scores)} ({pass_count/len(scores)*100:.0f}%)')
+            cw.writerow(['SUMMARY STATISTICS'])
+            avg_score = sum(scores) / len(scores)
+            cw.writerow(['Average Score', f"{avg_score:.1f}"])
+            cw.writerow(['Highest Score', max(scores)])
+            cw.writerow(['Lowest Score', min(scores)])
+            
+            # Assuming passing is 50% of the assigned questions
+            pass_threshold = total_q / 2
+            pass_count = sum(1 for s in scores if s >= pass_threshold)
+            cw.writerow(['Pass Rate (>=50%)', f"{pass_count}/{len(scores)} ({pass_count/len(scores)*100:.0f}%)"])
 
-    doc.add_paragraph('')
-    footer = doc.add_paragraph(f'Report generated on {datetime.utcnow().strftime("%d-%m-%Y %H:%M")} UTC')
-    footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    for run in footer.runs:
-        run.font.size = Pt(8)
-        run.font.color.rgb = RGBColor(150, 150, 150)
-
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    filename = f"Quiz_Report_{session_code}.docx"
-    return send_file(
-        buffer,
-        as_attachment=True,
-        download_name=filename,
-        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    output = si.getvalue()
+    
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment;filename=Quiz_Report_{session_code}.csv"}
     )

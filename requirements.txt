@@ -19,3 +19,5 @@ langchain-text-splitters
 bcrypt
 PyJWT
 reportlab
+gunicorn
+psycopg2-binary

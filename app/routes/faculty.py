@@ -73,6 +73,20 @@ def upload_pdf():
             'error': f'Question generation failed — only {count} questions could be generated. This can happen if the PDF is too short, image-heavy, or the AI service is temporarily unavailable. Please try uploading again.'
         }), 422
 
+    # VALIDATION: Never create a session with 0 questions
+    if not quiz_data or len(quiz_data) < 5:
+        # Clean up the uploaded file
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+        count = len(quiz_data) if quiz_data else 0
+        print(f"[Faculty] REJECTED session {session_code}: only {count} questions generated")
+        return jsonify({
+            'success': False,
+            'error': f'Question generation failed — only {count} questions could be generated. This can happen if the PDF is too short, image-heavy, or the AI service is temporarily unavailable. Please try uploading again.'
+        }), 422
+
     qr_path = generate_qr_for_session(session_code)
 
     # Create session document in MongoDB
@@ -182,6 +196,7 @@ def download_report(session_code):
     import csv
     from io import StringIO
 
+
     quiz_session = get_quiz_session_by_code(session_code)
     if not quiz_session:
         return jsonify({'success': False, 'error': 'Session not found'}), 404
@@ -235,13 +250,11 @@ def download_report(session_code):
             cw.writerow(['Average Score', f"{avg_score:.1f}"])
             cw.writerow(['Highest Score', max(scores)])
             cw.writerow(['Lowest Score', min(scores)])
-
             pass_threshold = total_q / 2
             pass_count = sum(1 for s in scores if s >= pass_threshold)
             cw.writerow(['Pass Rate (>=50%)', f"{pass_count}/{len(scores)} ({pass_count/len(scores)*100:.0f}%)"])
 
     output = si.getvalue()
-
     return Response(
         output,
         mimetype="text/csv",

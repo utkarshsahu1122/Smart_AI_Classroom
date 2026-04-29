@@ -18,9 +18,15 @@ function Navbar() {
         </Link>
         <Link
           to="/student/login"
-          className={location.pathname.startsWith('/student') ? 'active' : ''}
+          className={location.pathname === '/student/login' || location.pathname === '/student/quiz' || location.pathname === '/student/result' ? 'active' : ''}
         >
-          Student
+          Quiz
+        </Link>
+        <Link
+          to="/student/doubts"
+          className={location.pathname === '/student/doubts' ? 'active' : ''}
+        >
+          Doubt Solver
         </Link>
       </div>
     </nav>

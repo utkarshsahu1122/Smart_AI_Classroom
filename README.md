@@ -29,18 +29,39 @@
 - ⛔ **Session Control** — End session anytime; all pending students get auto-submitted
 - 📊 **DOCX Reports** — Download professional Word documents with scores, statistics, and pass rates
 
-### Student Module
+### Student Quiz Module
 - 🔐 **Secure Login** — One-time login per roll number; no credential reuse or re-entry after submission
 - ⚡ **Instant Quiz** — 10 random questions assigned instantly from the pre-generated pool (zero wait time)
 - ⏱️ **Live Timer** — 10-minute countdown with auto-submit on expiry
 - 📝 **Mixed Questions** — MCQs with plausible distractors + Fill-in-the-blanks
 - 🔄 **Session-End Detection** — Browser automatically submits when faculty ends the session
 
+### Student Doubt Solver (NEW)
+- 💬 **ChatGPT-like Interface** — Conversational AI tutor with chat bubbles, typing indicator, and history sidebar
+- 📄 **PDF Upload** — Students upload their own study material for context-aware Q&A
+- 🧠 **RAG-powered Answers** — Retrieves relevant chunks from the uploaded PDF to answer doubts
+- 📝 **Follow-up Support** — Maintains conversation context for multi-turn Q&A
+- 📚 **Source Citations** — Expandable source snippets showing which PDF chunks informed the answer
+- 📥 **PDF Export** — Download chat summary as a clean, structured PDF document
+- ⏰ **7-Day Auto-Expiry** — Chat sessions automatically expire after 7 days with download-before-expiry support
+
+### Security & Authentication
+- 🔒 **JWT Authentication** — Token-based auth for the Doubt Solver module
+- 🔑 **Bcrypt Passwords** — Secure password hashing with registration + login flow
+- 🛡️ **Ownership Enforcement** — Every API checks that students can only access their own data
+- 🚫 **Auto-Logout** — Expired tokens trigger automatic re-authentication
+
+### LangGraph Multi-Agent System
+- 🤖 **Agent A: Quiz Generator** — LangGraph graph: Load PDF → Build Vectorstore → Retrieve Context → Generate Questions
+- 🤖 **Agent B: Doubt Solver** — LangGraph graph: Retrieve Chunks → Generate Conversational Answer
+- 🧩 **Extensible Design** — Easy to add new agents (Note Generator, Quiz Evaluator, Feedback Agent)
+
 ### AI Intelligence Engine
 - 🧠 **RAG Pipeline** — PDF → Text Chunking → FAISS Vector Store → Context Retrieval → Gemini LLM
 - 🏠 **Local Embeddings** — Uses HuggingFace `all-MiniLM-L6-v2` (free, fast, runs offline)
 - 🎯 **Semantic Questions** — Prompt-engineered to test understanding, not rote memorization
 - 📈 **Scalable Pool** — Dynamic question count based on PDF length (3 pages → 30 questions, 25+ pages → 100)
+- 🕐 **IST Timezone** — All timestamps displayed in Asia/Kolkata (IST) for Indian users
 
 ---
 
@@ -103,16 +124,25 @@ smart-classroom-ai/
 │   ├── __init__.py               # App factory with CORS
 │   ├── models/
 │   │   ├── database.py           # SQLAlchemy instance
-│   │   └── schemas.py            # DB models (QuizSession, Student, QuizQuestion, StudentQuestion)
+│   │   ├── schemas.py            # Quiz models (QuizSession, Student, QuizQuestion)
+│   │   └── chat.py               # Doubt Solver models (StudentProfile, ChatSession, Message)
 │   ├── routes/
 │   │   ├── faculty.py            # Faculty REST API endpoints
-│   │   └── student.py            # Student REST API endpoints
+│   │   ├── student.py            # Student quiz REST API endpoints
+│   │   └── student_doubt.py      # Doubt Solver API (JWT-protected)
 │   ├── services/
-│   │   ├── rag_engine.py         # RAG pipeline (PDF → FAISS → Gemini → Questions)
+│   │   ├── langgraph_agents.py   # LangGraph: Agent A (Quiz) + Agent B (Doubt Solver)
+│   │   ├── rag_engine.py         # RAG pipeline (delegates to Agent A)
+│   │   ├── doubt_solver.py       # Doubt Solver orchestrator
+│   │   ├── auth.py               # JWT token generation & auth_required decorator
+│   │   ├── pdf_export.py         # PDF export using reportlab
+│   │   ├── timezone.py           # UTC → IST timezone conversion
 │   │   └── qr_service.py         # QR code generation
 │   ├── static/
-│   │   ├── temp_uploads/         # Uploaded PDFs & QR codes
-│   │   └── vectorstores/         # FAISS vector indices per session
+│   │   ├── temp_uploads/         # Faculty uploaded PDFs & QR codes
+│   │   ├── vectorstores/         # FAISS vector indices per quiz session
+│   │   ├── doubt_uploads/        # Student uploaded PDFs (doubt solver)
+│   │   └── doubt_vectorstores/   # FAISS indices per student document
 │
 ├── frontend/                     # React Frontend (Vite)
 │   ├── index.html
@@ -123,13 +153,16 @@ smart-classroom-ai/
 │       ├── App.jsx               # Route definitions
 │       ├── index.css             # Premium dark theme design system
 │       ├── components/
-│       │   └── Navbar.jsx
+│       │   ├── Navbar.jsx
+│       │   ├── ChatBubble.jsx          # Chat message bubble with sources
+│       │   └── ChatHistorySidebar.jsx  # Session history sidebar
 │       └── pages/
 │           ├── FacultyDashboard.jsx
 │           ├── SessionDetails.jsx
 │           ├── StudentLogin.jsx
 │           ├── QuizView.jsx
-│           └── QuizResult.jsx
+│           ├── QuizResult.jsx
+│           └── StudentDoubtSolver.jsx  # ChatGPT-like doubt solver UI
 │
 ├── run.py                        # Flask entry point
 ├── requirements.txt              # Python dependencies
@@ -226,6 +259,16 @@ Navigate to **http://localhost:5173** in your browser.
 5. Submit or get auto-submitted when timer expires / faculty ends session
 6. View your **score** immediately
 
+### Doubt Solver Workflow
+1. Navigate to **Doubt Solver** tab
+2. **Register** with name, roll number, and password (first time) or **Login**
+3. **Upload a PDF** of your study material
+4. Click **"+ New Chat"** to start a conversation
+5. **Ask questions** about the material — AI answers using RAG from your PDF
+6. Continue asking follow-up questions in the same chat
+7. **Download PDF summary** of your chat anytime
+8. Chat sessions auto-expire after **7 days**
+
 ---
 
 ## 🔌 API Endpoints
@@ -239,7 +282,7 @@ Navigate to **http://localhost:5173** in your browser.
 | `POST` | `/api/faculty/session/<code>/end` | End session & auto-submit students |
 | `GET` | `/api/faculty/session/<code>/report` | Download DOCX report |
 
-### Student
+### Student (Quiz)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -249,6 +292,20 @@ Navigate to **http://localhost:5173** in your browser.
 | `GET` | `/api/student/check_session?session_id=X` | Check if session is active |
 | `GET` | `/api/student/result?student_id=X` | Get result details |
 
+### Doubt Solver (JWT Protected)
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/doubt/register` | ✗ | Register new student (returns JWT) |
+| `POST` | `/api/doubt/login` | ✗ | Login with roll_no + password (returns JWT) |
+| `POST` | `/api/doubt/upload-pdf` | ✓ | Upload a PDF for RAG |
+| `POST` | `/api/doubt/chat/create` | ✓ | Create new chat session |
+| `POST` | `/api/doubt/chat/send` | ✓ | Send question & get AI response |
+| `GET` | `/api/doubt/chat/history` | ✓ | List all active chat sessions |
+| `GET` | `/api/doubt/chat/<id>/messages` | ✓ | Get messages in a chat |
+| `GET` | `/api/doubt/chat/<id>/download` | ✓ | Download chat as PDF |
+| `GET` | `/api/doubt/documents` | ✓ | List uploaded PDFs |
+
 ---
 
 ## 🗺 Future Roadmap
@@ -256,8 +313,9 @@ Navigate to **http://localhost:5173** in your browser.
 - [ ] **Phase 2** — Speech & Language Module (voice-based interaction)
 - [ ] **Phase 3** — Computer Vision Module (attention monitoring)
 - [ ] **Model Fine-Tuning** — Custom LLM training on collected quiz data
-- [ ] **Authentication** — Faculty login with JWT
+- [ ] **Faculty Authentication** — Faculty login with JWT
 - [ ] **Analytics Dashboard** — Historical performance graphs
+- [ ] **New Agents** — Note Generator, Quiz Evaluator, Feedback Agent
 - [ ] **Deployment** — Docker + cloud hosting
 
 ---

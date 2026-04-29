@@ -139,6 +139,7 @@ function SessionDetails() {
                 <th>Name</th>
                 <th>Status</th>
                 <th>Score</th>
+                <th>Integrity</th>
               </tr>
             </thead>
             <tbody>
@@ -158,6 +159,15 @@ function SessionDetails() {
                   </td>
                   <td style={{ fontWeight: 600 }}>
                     {s.submitted ? `${s.score}/${s.total}` : '—'}
+                  </td>
+                  <td>
+                    {s.unfair_means ? (
+                      <span className="badge badge-danger" title={`${s.warning_count} warning(s)`}>🚫 UNFAIR</span>
+                    ) : s.warning_count > 0 ? (
+                      <span className="text-muted" style={{ fontSize: '0.75rem' }}>⚠️ {s.warning_count} warn</span>
+                    ) : (
+                      <span style={{ color: 'var(--accent-green)', fontSize: '0.8rem' }}>✓ Fair</span>
+                    )}
                   </td>
                 </tr>
               ))}

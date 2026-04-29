@@ -2,6 +2,7 @@ import random
 from flask import Blueprint, request, jsonify
 from ..models.database import db
 from ..models.schemas import QuizSession, Student, QuizQuestion, StudentQuestion
+from ..services.timezone import to_local
 from datetime import datetime
 
 bp = Blueprint('student', __name__, url_prefix='/api/student')
@@ -49,7 +50,27 @@ def login():
         db.session.flush()
 
         pool = QuizQuestion.query.filter_by(session_id=quiz_session.id).all()
-        selected = random.sample(pool, min(10, len(pool)))
+        
+        # Split pool into question types
+        mcqs = [q for q in pool if q.question_type == 'mcq']
+        fills = [q for q in pool if q.question_type == 'fill_blank']
+        
+        # Calculate target counts (70% MCQ, 30% Fill-in-the-blank for a 20 question quiz)
+        total_target = min(20, len(pool))
+        target_mcq = min(len(mcqs), int(total_target * 0.7))
+        target_fill = min(len(fills), total_target - target_mcq)
+        
+        # If we couldn't get enough fill_blanks, make up the difference with more MCQs (and vice-versa)
+        if target_mcq + target_fill < total_target:
+            target_mcq = min(len(mcqs), total_target - target_fill)
+        if target_mcq + target_fill < total_target:
+            target_fill = min(len(fills), total_target - target_mcq)
+            
+        selected_mcqs = random.sample(mcqs, target_mcq)
+        selected_fills = random.sample(fills, target_fill)
+        
+        selected = selected_mcqs + selected_fills
+        random.shuffle(selected) # Mix them up!
 
         for q in selected:
             sq = StudentQuestion(student_id=student.id, question_id=q.id)
@@ -121,6 +142,7 @@ def submit_quiz():
 
     student_id = data.get('student_id')
     answers = data.get('answers', {})
+    reason = data.get('reason', 'manual')  # manual, time_up, session_ended, proctoring
 
     student = Student.query.get(student_id)
     if not student:
@@ -145,6 +167,12 @@ def submit_quiz():
     student.score = score
     student.submitted_at = datetime.utcnow()
     student.is_logged_in = False
+    student.submission_reason = reason
+
+    # Mark unfair means if submitted due to proctoring violations
+    if reason == 'proctoring':
+        student.unfair_means = True
+
     db.session.commit()
 
     return jsonify({
@@ -152,6 +180,30 @@ def submit_quiz():
         'score': score,
         'total': total,
         'student_name': student.name,
+    })
+
+@bp.route('/proctor/warn', methods=['POST'])
+def proctor_warning():
+    """Record a proctoring warning for a student."""
+    data = request.get_json()
+    student_id = data.get('student_id')
+    reason = data.get('reason', 'unknown')
+
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({'success': False, 'error': 'Student not found'}), 404
+
+    student.warning_count = (student.warning_count or 0) + 1
+    db.session.commit()
+
+    print(f"[Proctor] Warning {student.warning_count} for {student.name} ({student.roll_no}): {reason}")
+
+    should_auto_submit = student.warning_count >= 2
+
+    return jsonify({
+        'success': True,
+        'warning_count': student.warning_count,
+        'auto_submit': should_auto_submit,
     })
 
 @bp.route('/check_session')
@@ -183,5 +235,8 @@ def get_result():
         'score': student.score,
         'total': len(student.assigned_questions),
         'submitted': student.submitted_at is not None,
-        'submitted_at': student.submitted_at.strftime('%d-%m-%Y %H:%M') if student.submitted_at else None,
+        'submitted_at': to_local(student.submitted_at) if student.submitted_at else None,
+        'unfair_means': student.unfair_means,
+        'warning_count': student.warning_count or 0,
+        'submission_reason': student.submission_reason or 'manual',
     })

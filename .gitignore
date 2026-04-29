@@ -16,6 +16,9 @@ instance/
 app/static/temp_uploads/*
 !app/static/temp_uploads/.gitkeep
 app/static/vectorstores/
+app/static/doubt_uploads/
+app/static/doubt_vectorstores/
+instance/
 
 # ===========================
 # Frontend (React / Node)

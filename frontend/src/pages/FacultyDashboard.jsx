@@ -110,12 +110,13 @@ function FacultyDashboard() {
           </div>
 
           {file && (
-            <div className="weight-settings mt-2" style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-              <div className="form-group" style={{ width: '150px' }}>
-                <label>MCQs Weight (%)</label>
+            <div className="weight-settings mt-2" style={{ display: 'flex', gap: '2rem', justifyContent: 'center', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ flex: '1', minWidth: '160px', maxWidth: '220px', textAlign: 'left', marginBottom: '0' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', color: '#a0aec0' }}>MCQs Weight (%)</label>
                 <input 
                   type="number" 
                   className="input" 
+                  style={{ width: '100%', padding: '0.7rem', borderRadius: '6px', border: '1px solid #4a5568', backgroundColor: '#2d3748', color: '#fff' }}
                   value={mcqWeight} 
                   onChange={(e) => {
                     let val = parseInt(e.target.value) || 0;
@@ -126,11 +127,12 @@ function FacultyDashboard() {
                   }}
                 />
               </div>
-              <div className="form-group" style={{ width: '150px' }}>
-                <label>Fill-in-Blanks Weight (%)</label>
+              <div className="form-group" style={{ flex: '1', minWidth: '160px', maxWidth: '220px', textAlign: 'left', marginBottom: '0' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', color: '#a0aec0' }}>Fill-in-Blanks Weight (%)</label>
                 <input 
                   type="number" 
                   className="input" 
+                  style={{ width: '100%', padding: '0.7rem', borderRadius: '6px', border: '1px solid #4a5568', backgroundColor: '#2d3748', color: '#fff' }}
                   value={fillWeight} 
                   onChange={(e) => {
                     let val = parseInt(e.target.value) || 0;

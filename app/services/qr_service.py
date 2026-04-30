@@ -4,8 +4,9 @@ from flask import current_app
 
 def generate_qr_for_session(session_code):
     """Generates a QR code for a given session code to login as student"""
-    # Points to React frontend (port 5173 in dev, adjust for production)
-    join_url = f"http://127.0.0.1:5173/student/login?session={session_code}"
+    # Points to React frontend — uses FRONTEND_URL env var for production
+    frontend_url = os.environ.get('FRONTEND_URL', 'http://127.0.0.1:5173')
+    join_url = f"{frontend_url}/student/login?session={session_code}"
     
     qr = qrcode.QRCode(
         version=1,

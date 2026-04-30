@@ -9,6 +9,7 @@ langchain-openai
 langchain-google-genai
 python-dotenv
 PyPDF2
+pypdf
 faiss-cpu
 sentence-transformers
 langchain-huggingface

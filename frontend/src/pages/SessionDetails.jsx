@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom'
 
 function SessionDetails() {
   const { sessionCode } = useParams()
-  const navigate = useNavigate()
   const [session, setSession] = useState(null)
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
@@ -104,7 +103,7 @@ function SessionDetails() {
 
         {session.qr_url && (
           <div className="qr-container">
-            <img src={session.qr_url} alt="Session QR Code" />
+            <img src={`${API_BASE}${session.qr_url}`} alt="Session QR Code" />
           </div>
         )}
 

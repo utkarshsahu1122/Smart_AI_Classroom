@@ -25,21 +25,33 @@ function QuizView() {
 
   const studentId = sessionStorage.getItem('student_id')
   const sessionId = sessionStorage.getItem('session_id')
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
+  // ─── Refs for stable callbacks ──────────────────
+  const answersRef = useRef({})
+  const questionsRef = useRef([])
+  const timeLeftRef = useRef(0)
+  const studentNameRef = useRef('')
+
+  useEffect(() => { answersRef.current = answers }, [answers])
+  useEffect(() => { questionsRef.current = questions }, [questions])
+  useEffect(() => { timeLeftRef.current = timeLeft }, [timeLeft])
+  useEffect(() => { studentNameRef.current = studentName }, [studentName])
 
   // ─── Save/Restore quiz state ────────────────────
 
   const saveQuizState = useCallback((q, a, t) => {
     const state = {
-      questions: q || questions,
-      answers: a || answers,
-      timeLeft: t !== undefined ? t : timeLeft,
+      questions: q || questionsRef.current,
+      answers: a || answersRef.current,
+      timeLeft: t !== undefined ? t : timeLeftRef.current,
       studentId,
       sessionId,
-      studentName,
+      studentName: studentNameRef.current,
       savedAt: Date.now(),
     }
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }, [questions, answers, timeLeft, studentId, sessionId, studentName])
+  }, [studentId, sessionId])
 
   const clearQuizState = () => {
     sessionStorage.removeItem(STORAGE_KEY)
@@ -69,12 +81,12 @@ function QuizView() {
     }
 
     try {
-      const res = await fetch('/api/student/submit', {
+      const res = await fetch(`${API_BASE}/api/student/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           student_id: studentId,
-          answers,
+          answers: answersRef.current,
           reason,
         }),
       })
@@ -85,11 +97,11 @@ function QuizView() {
       sessionStorage.setItem('quiz_total', data.total)
       navigate('/student/result')
     } catch (err) {
-      setError('Submission failed. Please try again.')
+      setError('Backend not connected. Please try again later.')
       hasSubmittedRef.current = false
       setSubmitting(false)
     }
-  }, [answers, studentId, navigate, submitting])
+  }, [studentId, navigate, submitting, API_BASE])
 
   // ─── Proctoring: record warning ─────────────────
 
@@ -108,7 +120,7 @@ function QuizView() {
 
     // Report to backend
     try {
-      const res = await fetch('/api/student/proctor/warn', {
+      const res = await fetch(`${API_BASE}/api/student/proctor/warn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ student_id: studentId, reason }),
@@ -119,8 +131,10 @@ function QuizView() {
         setShowWarning(false)
         handleSubmit('proctoring')
       }
-    } catch {}
-  }, [studentId, handleSubmit])
+    } catch (err) {
+      console.error('Proctoring report failed (Backend not connected).', err)
+    }
+  }, [studentId, handleSubmit, API_BASE])
 
   // ─── Proctoring: setup event listeners ──────────
 
@@ -220,7 +234,7 @@ function QuizView() {
     // Fresh fetch from backend
     const fetchQuiz = async () => {
       try {
-        const res = await fetch(`/api/student/quiz?student_id=${studentId}`)
+        const res = await fetch(`${API_BASE}/api/student/quiz?student_id=${studentId}`)
         const data = await res.json()
 
         if (data.already_submitted) {
@@ -240,14 +254,14 @@ function QuizView() {
           setError(data.error || 'Failed to load quiz')
         }
       } catch (err) {
-        setError('Server error loading quiz')
+        setError('Backend not connected. Please try again later.')
       } finally {
         setLoading(false)
       }
     }
 
     fetchQuiz()
-  }, [studentId, navigate])
+  }, [studentId, navigate, API_BASE, saveQuizState])
 
   // ─── Timer countdown ────────────────────────────
 
@@ -255,21 +269,22 @@ function QuizView() {
     if (timeLeft <= 0 || loading) return
 
     timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        const next = prev - 1
-        // Save state every 5 seconds
-        if (next % 5 === 0) saveQuizState(undefined, undefined, next)
-        if (next <= 0) {
-          clearInterval(timerRef.current)
-          handleSubmit('time_up')
-          return 0
-        }
-        return next
-      })
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0))
     }, 1000)
 
     return () => clearInterval(timerRef.current)
-  }, [loading, handleSubmit, saveQuizState])
+  }, [loading])
+
+  // Timer side effects
+  useEffect(() => {
+    if (loading) return
+
+    if (timeLeft <= 0 && !hasSubmittedRef.current) {
+      handleSubmit('time_up')
+    } else if (timeLeft > 0 && timeLeft % 5 === 0) {
+      saveQuizState(undefined, undefined, timeLeft)
+    }
+  }, [timeLeft, loading, handleSubmit, saveQuizState])
 
   // ─── Poll for session end ───────────────────────
 
@@ -278,7 +293,7 @@ function QuizView() {
 
     sessionPollRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`/api/student/check_session?session_id=${sessionId}`)
+        const res = await fetch(`${API_BASE}/api/student/check_session?session_id=${sessionId}`)
         const data = await res.json()
         if (!data.active) {
           clearInterval(sessionPollRef.current)
@@ -288,16 +303,14 @@ function QuizView() {
     }, 5000)
 
     return () => clearInterval(sessionPollRef.current)
-  }, [sessionId, loading, handleSubmit])
+  }, [sessionId, loading, handleSubmit, API_BASE])
 
   // ─── Answer change handler ──────────────────────
 
   const handleAnswerChange = (questionId, value) => {
-    setAnswers((prev) => {
-      const updated = { ...prev, [questionId]: value }
-      saveQuizState(undefined, updated, undefined)
-      return updated
-    })
+    const updated = { ...answers, [questionId]: value }
+    setAnswers(updated)
+    saveQuizState(undefined, updated, undefined)
   }
 
   const formatTime = (seconds) => {

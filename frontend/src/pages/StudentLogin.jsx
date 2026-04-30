@@ -10,6 +10,8 @@ function StudentLogin() {
   const [error, setError] = useState('')
   const navigate = useNavigate()
 
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
   // If a quiz is already active, redirect straight to it
   useEffect(() => {
     const activeQuiz = sessionStorage.getItem('active_quiz_state')
@@ -30,7 +32,7 @@ function StudentLogin() {
     setError('')
 
     try {
-      const res = await fetch('/api/student/login', {
+      const res = await fetch(`${API_BASE}/api/student/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -52,7 +54,7 @@ function StudentLogin() {
         setError(data.error || 'Login failed')
       }
     } catch (err) {
-      setError('Server error. Please try again.')
+      setError('Backend not connected. Please try again later.')
     } finally {
       setLoading(false)
     }

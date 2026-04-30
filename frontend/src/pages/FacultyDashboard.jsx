@@ -11,6 +11,8 @@ function FacultyDashboard() {
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
 
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
   const handleFileChange = (e) => {
     const selected = e.target.files[0]
     if (selected && selected.type === 'application/pdf') {
@@ -48,7 +50,7 @@ function FacultyDashboard() {
     formData.append('fill_weight', fillWeight)
 
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || "") + '/api/faculty/upload', {
+      const res = await fetch(`${API_BASE}/api/faculty/upload`, {
         method: 'POST',
         body: formData,
       })
@@ -60,7 +62,7 @@ function FacultyDashboard() {
         setError(data.error || 'Upload failed')
       }
     } catch (err) {
-      setError('Server error. Make sure the Flask backend is running.')
+      setError('Backend not connected. Please try again later.')
     } finally {
       setUploading(false)
     }

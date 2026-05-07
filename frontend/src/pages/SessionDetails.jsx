@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { API_BASE } from '../config'
 
 function SessionDetails() {
   const { sessionCode } = useParams()
@@ -9,8 +10,6 @@ function SessionDetails() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [ending, setEnding] = useState(false)
-
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
   const fetchSession = async () => {
     try {

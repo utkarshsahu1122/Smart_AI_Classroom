@@ -205,14 +205,27 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Configure your Environment Variables
+# Configure your Environment Variables
 copy .env.template .env
-# Edit .env and paste your GOOGLE_API_KEY and MONGO_URI
+
+### Environment Variables
+Required Environment Variables:
+- `MONGO_URI`
+- `GOOGLE_API_KEY`
+- `JWT_SECRET`
+- `FRONTEND_URL`
+- `VITE_API_BASE_URL`
 
 ### 3. Frontend Setup
 
 ```bash
 cd frontend
 npm install
+
+# Create local environment config
+echo "VITE_API_BASE_URL=http://localhost:8080" > .env
+echo "VITE_API_BASE_URL=" > .env.production
+
 cd ..
 ```
 
@@ -224,15 +237,17 @@ You need **two terminals** running simultaneously:
 ```bash
 call venv\Scripts\activate.bat
 python run.py
+# Or run with Gunicorn:
+# gunicorn --bind=0.0.0.0 --timeout 600 run:app
 ```
-> Backend runs on `http://127.0.0.1:5000`
+> Backend runs on `http://127.0.0.1:8080` (or `5000` via Flask dev server)
 
 **Terminal 2 — React Frontend:**
 ```bash
 cd frontend
 npm run dev
 ```
-> Frontend runs on `http://127.0.0.1:5173`
+> Frontend runs on `http://localhost:5173`
 
 ### 5. Open the App
 
@@ -249,6 +264,18 @@ Run Docker with env file:
 ```bash
 docker run -p 8080:8080 --env-file .env smart-classroom-api
 ```
+*(Ensure `.env` contains `MONGO_URI` and `FRONTEND_URL`)*
+
+---
+
+## ☁️ Cloud Deployment
+
+- **Frontend** deployed on Azure Static Web Apps
+- **Backend** deployed on Azure App Service
+- **MongoDB Atlas** as cloud database
+- **Docker-ready** backend support
+
+*Note: Frontend domain must be allowed in Flask-CORS configuration for production deployment.*
 
 ---
 
@@ -328,7 +355,8 @@ docker run -p 8080:8080 --env-file .env smart-classroom-api
 - [ ] **Faculty Authentication** — Faculty login with JWT
 - [ ] **Analytics Dashboard** — Historical performance graphs
 - [ ] **New Agents** — Note Generator, Quiz Evaluator, Feedback Agent
-- [ ] **Deployment** — Docker + cloud hosting
+- [x] **Database Migration** — Migrated from local SQLite to MongoDB Atlas
+- [x] **Deployment** — Fully cloud-ready architecture with Azure App Service, Azure Static Web Apps, MongoDB Atlas, and Docker support
 
 ---
 

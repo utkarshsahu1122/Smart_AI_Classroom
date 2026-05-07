@@ -1,15 +1,20 @@
 """
 Doubt Solver Service — orchestrates PDF uploads, chat sessions, and Agent B.
 Uses IST timezone for all display timestamps.
+Now uses MongoDB for all persistence.
 """
 
 import os
 import json
 from datetime import datetime, timedelta
 from flask import current_app
-from ..models.database import db
 from ..models.chat import (
-    StudentProfile, StudentDocument, DoubtChatSession, ChatMessage, CHAT_EXPIRY_DAYS
+    create_student_profile, get_profile_by_roll_no, check_password,
+    create_student_document, get_document_by_id,
+    create_doubt_session, get_doubt_session_by_id, update_doubt_session,
+    get_active_sessions_by_student, is_session_expired,
+    create_chat_message, get_messages_by_session, count_messages_by_session,
+    cleanup_expired_doubt_sessions,
 )
 from .langgraph_agents import run_doubt_agent, get_embeddings
 from .timezone import to_local, to_local_short
@@ -18,31 +23,28 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 
 
-def register_profile(name: str, roll_no: str, password: str) -> StudentProfile:
+def register_profile(name: str, roll_no: str, password: str) -> dict:
     """Register a new student profile with hashed password."""
-    existing = StudentProfile.query.filter_by(roll_no=roll_no).first()
+    existing = get_profile_by_roll_no(roll_no)
     if existing:
         raise ValueError("Roll number already registered. Please login instead.")
 
-    profile = StudentProfile(name=name, roll_no=roll_no)
-    profile.set_password(password)
-    db.session.add(profile)
-    db.session.commit()
+    profile = create_student_profile(name, roll_no, password)
     print(f"[DoubtSolver] New profile registered: {name} ({roll_no})")
     return profile
 
 
-def authenticate_profile(roll_no: str, password: str) -> StudentProfile:
+def authenticate_profile(roll_no: str, password: str):
     """Authenticate a student with roll_no + password."""
-    profile = StudentProfile.query.filter_by(roll_no=roll_no).first()
+    profile = get_profile_by_roll_no(roll_no)
     if not profile:
         return None
-    if not profile.check_password(password):
+    if not check_password(password, profile['password_hash']):
         return None
     return profile
 
 
-def process_student_pdf(student_id: int, file_obj, original_filename: str) -> StudentDocument:
+def process_student_pdf(student_id: str, file_obj, original_filename: str) -> dict:
     """Save and vectorize a student-uploaded PDF."""
     from werkzeug.utils import secure_filename
 
@@ -72,32 +74,28 @@ def process_student_pdf(student_id: int, file_obj, original_filename: str) -> St
     vectorstore.save_local(vs_dir)
 
     # Save record
-    doc = StudentDocument(
+    doc = create_student_document(
         student_id=student_id,
         original_filename=original_filename,
         stored_filename=stored_name,
         vectorstore_path=vs_dir,
     )
-    db.session.add(doc)
-    db.session.commit()
 
     print(f"[DoubtSolver] PDF processed: {original_filename} → {len(chunks)} chunks")
     return doc
 
 
-def create_chat_session(student_id: int, document_id: int, title: str = "New Chat") -> DoubtChatSession:
+def create_chat_session(student_id: str, document_id: str, title: str = "New Chat") -> dict:
     """Create a new doubt chat session linked to a document."""
-    session = DoubtChatSession(
+    session = create_doubt_session(
         student_id=student_id,
         document_id=document_id,
         title=title,
     )
-    db.session.add(session)
-    db.session.commit()
     return session
 
 
-def send_message(session_id: int, query: str, requesting_student_id: int) -> dict:
+def send_message(session_id: str, query: str, requesting_student_id: str) -> dict:
     """
     Process a student message:
     1. Verify ownership
@@ -106,127 +104,113 @@ def send_message(session_id: int, query: str, requesting_student_id: int) -> dic
     4. Run Agent B
     5. Save and return the AI response
     """
-    chat_session = DoubtChatSession.query.get(session_id)
+    chat_session = get_doubt_session_by_id(session_id)
     if not chat_session:
         return {"error": "Chat session not found"}
 
     # Security: verify the requesting student owns this chat
-    if chat_session.student_id != requesting_student_id:
+    if chat_session['student_id'] != requesting_student_id:
         return {"error": "Access denied. This chat belongs to another student."}
 
-    if chat_session.is_expired:
-        chat_session.is_active = False
-        db.session.commit()
+    if is_session_expired(chat_session):
+        update_doubt_session(session_id, {"is_active": False})
         return {"error": "This chat session has expired (7-day limit reached)."}
 
-    doc = chat_session.document
-    if not doc or not doc.vectorstore_path:
+    doc = get_document_by_id(chat_session['document_id'])
+    if not doc or not doc.get('vectorstore_path'):
         return {"error": "No PDF linked to this chat. Please upload a PDF first."}
 
     # 1. Save user message
-    user_msg = ChatMessage(session_id=session_id, role="user", content=query)
-    db.session.add(user_msg)
+    create_chat_message(session_id=session_id, role="user", content=query)
 
     # 2. Build chat history for context
+    messages = get_messages_by_session(session_id)
     history = [
-        {"role": m.role, "content": m.content}
-        for m in chat_session.messages
+        {"role": m['role'], "content": m['content']}
+        for m in messages
     ]
 
     # 3. Run Agent B
     result = run_doubt_agent(
         query=query,
-        vectorstore_path=doc.vectorstore_path,
+        vectorstore_path=doc['vectorstore_path'],
         chat_history=history,
     )
 
     # 4. Save AI response
     sources_json = json.dumps(result.get("sources", []))
-    ai_msg = ChatMessage(
+    ai_msg = create_chat_message(
         session_id=session_id,
         role="assistant",
         content=result["answer"],
         sources=sources_json,
     )
-    db.session.add(ai_msg)
 
     # Update session title from first question
-    if len(history) == 0:
-        chat_session.title = query[:80] + ("..." if len(query) > 80 else "")
+    updates = {"last_active_at": datetime.utcnow()}
+    if len(history) <= 1:  # First exchange (just the user message we added)
+        updates["title"] = query[:80] + ("..." if len(query) > 80 else "")
 
-    chat_session.last_active_at = datetime.utcnow()
-    db.session.commit()
+    update_doubt_session(session_id, updates)
 
     return {
         "answer": result["answer"],
         "sources": result.get("sources", []),
-        "message_id": ai_msg.id,
+        "message_id": ai_msg['id'],
     }
 
 
-def get_chat_history(student_id: int) -> list:
+def get_chat_history(student_id: str) -> list:
     """Get all active (non-expired) chat sessions for a student."""
-    sessions = DoubtChatSession.query.filter_by(
-        student_id=student_id, is_active=True
-    ).order_by(DoubtChatSession.last_active_at.desc()).all()
+    sessions = get_active_sessions_by_student(student_id)
 
     result = []
     for s in sessions:
-        if s.is_expired:
-            s.is_active = False
+        if is_session_expired(s):
+            update_doubt_session(s['id'], {"is_active": False})
             continue
+
+        doc = get_document_by_id(s.get('document_id'))
+        msg_count = count_messages_by_session(s['id'])
+
         result.append({
-            "id": s.id,
-            "title": s.title,
-            "document": s.document.original_filename if s.document else None,
-            "created_at": to_local(s.created_at),
-            "last_active": to_local(s.last_active_at),
-            "expires_at": to_local(s.expires_at),
-            "message_count": len(s.messages),
+            "id": s['id'],
+            "title": s.get('title', 'New Chat'),
+            "document": doc['original_filename'] if doc else None,
+            "created_at": to_local(s['created_at']),
+            "last_active": to_local(s.get('last_active_at')),
+            "expires_at": to_local(s.get('expires_at')),
+            "message_count": msg_count,
         })
 
-    db.session.commit()  # persist any expiry changes
     return result
 
 
-def get_session_messages(session_id: int, requesting_student_id: int) -> dict:
+def get_session_messages(session_id: str, requesting_student_id: str) -> dict:
     """Get all messages in a chat session (with ownership check)."""
-    session = DoubtChatSession.query.get(session_id)
+    session = get_doubt_session_by_id(session_id)
     if not session:
         return {"error": "Session not found"}
 
-    if session.student_id != requesting_student_id:
+    if session['student_id'] != requesting_student_id:
         return {"error": "Access denied"}
 
-    messages = ChatMessage.query.filter_by(session_id=session_id)\
-        .order_by(ChatMessage.created_at).all()
+    messages = get_messages_by_session(session_id)
+    doc = get_document_by_id(session.get('document_id'))
 
     return {
         "messages": [{
-            "id": m.id,
-            "role": m.role,
-            "content": m.content,
-            "sources": json.loads(m.sources) if m.sources else [],
-            "created_at": to_local(m.created_at),
+            "id": m['id'],
+            "role": m['role'],
+            "content": m['content'],
+            "sources": json.loads(m['sources']) if m.get('sources') else [],
+            "created_at": to_local(m['created_at']),
         } for m in messages],
-        "title": session.title,
-        "document": session.document.original_filename if session.document else None,
+        "title": session.get('title', 'New Chat'),
+        "document": doc['original_filename'] if doc else None,
     }
 
 
 def cleanup_expired_sessions():
     """Deactivate expired chat sessions (lazy cleanup)."""
-    cutoff = datetime.utcnow()
-    expired = DoubtChatSession.query.filter(
-        DoubtChatSession.expires_at < cutoff,
-        DoubtChatSession.is_active == True
-    ).all()
-
-    count = 0
-    for session in expired:
-        session.is_active = False
-        count += 1
-
-    db.session.commit()
-    print(f"[DoubtSolver] Cleaned up {count} expired sessions")
-    return count
+    return cleanup_expired_doubt_sessions()

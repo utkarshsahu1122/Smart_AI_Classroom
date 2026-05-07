@@ -10,14 +10,25 @@ function getHeaders() {
     'Authorization': `Bearer ${getToken()}`,
   }
 }
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+
 async function authFetch(url, opts = {}) {
-  opts.headers = { ...opts.headers, 'Authorization': `Bearer ${getToken()}` }
-  const res = await fetch(url, opts)
-  if (res.status === 401) {
-    localStorage.clear()
-    window.location.reload()
+  const token = localStorage.getItem('doubt_token')
+  const headers = { ...opts.headers }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
   }
-  return res
+  try {
+    const res = await fetch(`${API_BASE}${url}`, { ...opts, headers })
+    if (res.status === 401) {
+      localStorage.removeItem('doubt_token')
+      localStorage.removeItem('doubt_student_id')
+      window.location.reload()
+    }
+    return res
+  } catch (err) {
+    throw new Error("Backend not connected. Please try again later.")
+  }
 }
 
 function StudentDoubtSolver() {
@@ -65,13 +76,15 @@ function StudentDoubtSolver() {
     e.preventDefault()
     setAuthError('')
     setAuthLoading(true)
-    const endpoint = authMode === 'register' ? '/api/doubt/register' : '/api/doubt/login'
+    const isRegister = authMode === 'register'
+    const payload = authForm
+    const endpoint = isRegister ? `${API_BASE}/api/doubt/register` : `${API_BASE}/api/doubt/login`
 
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authForm),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (data.success) {
@@ -85,10 +98,11 @@ function StudentDoubtSolver() {
       } else {
         setAuthError(data.error)
       }
-    } catch {
-      setAuthError('Server error. Make sure the backend is running.')
+    } catch (err) {
+      setAuthError('Backend not connected. Please try again later.')
+    } finally {
+      setAuthLoading(false)
     }
-    setAuthLoading(false)
   }
 
   const handleLogout = () => {

@@ -1,5 +1,5 @@
 Flask
-Flask-SQLAlchemy
+flask-cors
 qrcode
 Pillow
 langchain
@@ -9,15 +9,15 @@ langchain-openai
 langchain-google-genai
 python-dotenv
 PyPDF2
+pypdf
 faiss-cpu
 sentence-transformers
 langchain-huggingface
 python-docx
-flask-cors
 langgraph
 langchain-text-splitters
 bcrypt
 PyJWT
 reportlab
 gunicorn
-psycopg2-binary
+pymongo

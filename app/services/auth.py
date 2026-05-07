@@ -12,10 +12,10 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'smart-classroom-secret-key-2026')
 TOKEN_EXPIRY_HOURS = 24
 
 
-def generate_token(student_id: int, roll_no: str) -> str:
+def generate_token(student_id: str, roll_no: str) -> str:
     """Generate a JWT token for an authenticated student."""
     payload = {
-        'student_id': student_id,
+        'student_id': str(student_id),  # MongoDB ObjectId as string
         'roll_no': roll_no,
         'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS),
         'iat': datetime.utcnow(),
@@ -56,7 +56,7 @@ def auth_required(f):
         if not payload:
             return jsonify({'success': False, 'error': 'Invalid or expired token. Please login again.'}), 401
 
-        kwargs['current_student_id'] = payload['student_id']
+        kwargs['current_student_id'] = payload['student_id']  # Now a string (ObjectId)
         return f(*args, **kwargs)
 
     return decorated

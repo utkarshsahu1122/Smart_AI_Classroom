@@ -7,18 +7,24 @@ function SessionDetails() {
   const [students, setStudents] = useState([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
   const [ending, setEnding] = useState(false)
+
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
   const fetchSession = async () => {
     try {
-      const res = await fetch(`/api/faculty/session/${sessionCode}`)
+      const res = await fetch(`${API_BASE}/api/faculty/session/${sessionCode}`)
       const data = await res.json()
       if (data.success) {
         setSession(data.session)
         setStudents(data.students)
+      } else {
+        setError(data.error)
       }
     } catch (err) {
       console.error('Failed to fetch session:', err)
+      setError('Backend not connected. Please try again later.')
     } finally {
       setLoading(false)
     }
@@ -32,20 +38,26 @@ function SessionDetails() {
   }, [sessionCode])
 
   const handleEndSession = async () => {
-    if (!confirm('Are you sure? All pending students will be auto-submitted.')) return
+    if (!window.confirm('Are you sure you want to end this session? All pending students will be auto-submitted.')) return
     setEnding(true)
     try {
-      const res = await fetch(`/api/faculty/session/${sessionCode}/end`, { method: 'POST' })
+      const res = await fetch(`${API_BASE}/api/faculty/session/${sessionCode}/end`, { method: 'POST' })
       const data = await res.json()
       if (data.success) {
-        setMessage(`Session ended! ${data.auto_submitted} pending student(s) were auto-submitted.`)
-        fetchSession()
+        alert('Session ended successfully.')
+        fetchSession() // Refresh
+      } else {
+        alert('Failed to end session: ' + data.error)
       }
     } catch (err) {
-      setMessage('Error ending session')
+      alert('Backend not connected. Please try again later.')
     } finally {
       setEnding(false)
     }
+  }
+
+  const handleDownloadReport = () => {
+    window.open(`${API_BASE}/api/faculty/session/${sessionCode}/report`, '_blank')
   }
 
   if (loading) {
@@ -57,6 +69,10 @@ function SessionDetails() {
         </div>
       </div>
     )
+  }
+
+  if (error) {
+    return <div className="alert alert-error">{error}</div>
   }
 
   if (!session) {
@@ -87,7 +103,7 @@ function SessionDetails() {
 
         {session.qr_url && (
           <div className="qr-container">
-            <img src={session.qr_url} alt="Session QR Code" />
+            <img src={`${API_BASE}${session.qr_url}`} alt="Session QR Code" />
           </div>
         )}
 
@@ -112,13 +128,12 @@ function SessionDetails() {
           </button>
         )}
 
-        <a
-          href={`/api/faculty/session/${sessionCode}/report`}
+        <button
           className="btn btn-success"
-          download
+          onClick={handleDownloadReport}
         >
           📄 Download Report
-        </a>
+        </button>
       </div>
 
       {/* Student Table */}

@@ -24,16 +24,17 @@
 ### Faculty Module
 - 📄 **PDF Upload** — Upload course material with drag-and-drop
 - 🤖 **AI Question Generation** — Automatically generates a pool of 30–100 semantically rich questions using RAG + Gemini 2.5 Flash
+- 🎛️ **Custom Weightage** — Faculty can define the exact percentage of MCQs vs Fill-in-the-blanks
 - 📱 **QR Code Session** — Auto-generates scannable QR codes for students to join
 - 👀 **Live Dashboard** — Real-time student tracking (who joined, who submitted)
 - ⛔ **Session Control** — End session anytime; all pending students get auto-submitted
-- 📊 **DOCX Reports** — Download professional Word documents with scores, statistics, and pass rates
+- 📊 **CSV Reports** — Download Excel-compatible CSV reports with scores, statistics, and pass rates
 
 ### Student Quiz Module
 - 🔐 **Secure Login** — One-time login per roll number; no credential reuse or re-entry after submission
 - ⚡ **Instant Quiz** — 10 random questions assigned instantly from the pre-generated pool (zero wait time)
 - ⏱️ **Live Timer** — 10-minute countdown with auto-submit on expiry
-- 📝 **Mixed Questions** — MCQs with plausible distractors + Fill-in-the-blanks
+- 📝 **Dynamic Mix** — Randomizes MCQs and Fill-in-the-blanks based on faculty's set weightage
 - 🔄 **Session-End Detection** — Browser automatically submits when faculty ends the session
 
 ### Student Doubt Solver (NEW)
@@ -87,8 +88,8 @@
 │         │                 │         │ │ FAISS → Context │ │  │
 │         └────────┬────────┘         │ │ Context → LLM   │ │  │
 │                  │                  │ └────────────────┘ │  │
-│           ┌──────┴──────┐           └────────────────────┘  │
-│           │   SQLite    │                                    │
+│           ┌──────┴──────┐           │
+│           │   MongoDB   │                                    │
 │           │   Database  │                                    │
 │           └─────────────┘                                    │
 ├──────────────────────────────────────────────────────────────┤
@@ -107,10 +108,10 @@
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | React 19, Vite, React Router v7 |
-| **Backend** | Python, Flask, Flask-SQLAlchemy, Flask-CORS |
+| **Backend** | Python, Flask, PyMongo, Flask-CORS |
 | **AI / RAG** | LangChain, Google Gemini 2.5 Flash, FAISS, HuggingFace Transformers |
-| **Database** | SQLite (via SQLAlchemy ORM) |
-| **Utilities** | python-docx (reports), qrcode (QR generation), PyPDF2 (PDF parsing) |
+| **Database** | MongoDB Atlas (Cloud) |
+| **Utilities** | reportlab (PDFs), qrcode (QR generation), PyPDF2 (PDF parsing) |
 | **Design** | Custom CSS with glassmorphism dark theme, Inter font |
 
 ---
@@ -123,9 +124,9 @@ smart-classroom-ai/
 ├── app/                          # Flask Backend
 │   ├── __init__.py               # App factory with CORS
 │   ├── models/
-│   │   ├── database.py           # SQLAlchemy instance
-│   │   ├── schemas.py            # Quiz models (QuizSession, Student, QuizQuestion)
-│   │   └── chat.py               # Doubt Solver models (StudentProfile, ChatSession, Message)
+│   │   ├── database.py           # PyMongo connection & helpers
+│   │   ├── schemas.py            # MongoDB quiz helpers (sessions, students, questions)
+│   │   └── chat.py               # MongoDB doubt solver helpers (profiles, chats)
 │   ├── routes/
 │   │   ├── faculty.py            # Faculty REST API endpoints
 │   │   ├── student.py            # Student quiz REST API endpoints
@@ -203,16 +204,28 @@ source venv/bin/activate
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Configure your API key
+# Configure your Environment Variables
+# Configure your Environment Variables
 copy .env.template .env
-# Edit .env and paste your GOOGLE_API_KEY
-```
+
+### Environment Variables
+Required Environment Variables:
+- `MONGO_URI`
+- `GOOGLE_API_KEY`
+- `JWT_SECRET`
+- `FRONTEND_URL`
+- `VITE_API_BASE_URL`
 
 ### 3. Frontend Setup
 
 ```bash
 cd frontend
 npm install
+
+# Create local environment config
+echo "VITE_API_BASE_URL=http://localhost:8080" > .env
+echo "VITE_API_BASE_URL=" > .env.production
+
 cd ..
 ```
 
@@ -224,19 +237,45 @@ You need **two terminals** running simultaneously:
 ```bash
 call venv\Scripts\activate.bat
 python run.py
+# Or run with Gunicorn:
+# gunicorn --bind=0.0.0.0 --timeout 600 run:app
 ```
-> Backend runs on `http://127.0.0.1:5000`
+> Backend runs on `http://127.0.0.1:8080` (or `5000` via Flask dev server)
 
 **Terminal 2 — React Frontend:**
 ```bash
 cd frontend
 npm run dev
 ```
-> Frontend runs on `http://127.0.0.1:5173`
+> Frontend runs on `http://localhost:5173`
 
 ### 5. Open the App
 
 Navigate to **http://localhost:5173** in your browser.
+
+### 6. Run via Docker (Cloud Run Compatible)
+
+Build the image:
+```bash
+docker build -t smart-classroom-api .
+```
+
+Run Docker with env file:
+```bash
+docker run -p 8080:8080 --env-file .env smart-classroom-api
+```
+*(Ensure `.env` contains `MONGO_URI` and `FRONTEND_URL`)*
+
+---
+
+## ☁️ Cloud Deployment
+
+- **Frontend** deployed on Azure Static Web Apps
+- **Backend** deployed on Azure App Service
+- **MongoDB Atlas** as cloud database
+- **Docker-ready** backend support
+
+*Note: Frontend domain must be allowed in Flask-CORS configuration for production deployment.*
 
 ---
 
@@ -249,7 +288,7 @@ Navigate to **http://localhost:5173** in your browser.
 4. Share the **QR code** with students (or give them the session code)
 5. Monitor the **live student table** to see who's taking the quiz
 6. Click **End Session** when time is up — all pending students are auto-submitted
-7. **Download the DOCX report** with all scores and statistics
+7. **Download the CSV report** with all scores and statistics
 
 ### Student Workflow
 1. Scan the **QR code** or navigate to the student login
@@ -280,7 +319,7 @@ Navigate to **http://localhost:5173** in your browser.
 | `POST` | `/api/faculty/upload` | Upload PDF & generate question pool |
 | `GET` | `/api/faculty/session/<code>` | Get session details + student list |
 | `POST` | `/api/faculty/session/<code>/end` | End session & auto-submit students |
-| `GET` | `/api/faculty/session/<code>/report` | Download DOCX report |
+| `GET` | `/api/faculty/session/<code>/report` | Download CSV report |
 
 ### Student (Quiz)
 
@@ -316,7 +355,8 @@ Navigate to **http://localhost:5173** in your browser.
 - [ ] **Faculty Authentication** — Faculty login with JWT
 - [ ] **Analytics Dashboard** — Historical performance graphs
 - [ ] **New Agents** — Note Generator, Quiz Evaluator, Feedback Agent
-- [ ] **Deployment** — Docker + cloud hosting
+- [x] **Database Migration** — Migrated from local SQLite to MongoDB Atlas
+- [x] **Deployment** — Fully cloud-ready architecture with Azure App Service, Azure Static Web Apps, MongoDB Atlas, and Docker support
 
 ---
 

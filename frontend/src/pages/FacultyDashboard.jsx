@@ -6,8 +6,12 @@ function FacultyDashboard() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [dragover, setDragover] = useState(false)
+  const [mcqWeight, setMcqWeight] = useState(70)
+  const [fillWeight, setFillWeight] = useState(30)
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
+
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0]
@@ -42,9 +46,11 @@ function FacultyDashboard() {
 
     const formData = new FormData()
     formData.append('pdf_file', file)
+    formData.append('mcq_weight', mcqWeight)
+    formData.append('fill_weight', fillWeight)
 
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || "") + '/api/faculty/upload', {
+      const res = await fetch(`${API_BASE}/api/faculty/upload`, {
         method: 'POST',
         body: formData,
       })
@@ -56,7 +62,7 @@ function FacultyDashboard() {
         setError(data.error || 'Upload failed')
       }
     } catch (err) {
-      setError('Server error. Make sure the Flask backend is running.')
+      setError('Backend not connected. Please try again later.')
     } finally {
       setUploading(false)
     }
@@ -102,6 +108,43 @@ function FacultyDashboard() {
               <p className="file-selected">✅ {file.name} ({(file.size / 1024).toFixed(0)} KB)</p>
             )}
           </div>
+
+          {file && (
+            <div className="weight-settings mt-2" style={{ display: 'flex', gap: '2rem', justifyContent: 'center', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ flex: '1', minWidth: '160px', maxWidth: '220px', textAlign: 'left', marginBottom: '0' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', color: '#a0aec0' }}>MCQs Weight (%)</label>
+                <input 
+                  type="number" 
+                  className="input" 
+                  style={{ width: '100%', padding: '0.7rem', borderRadius: '6px', border: '1px solid #4a5568', backgroundColor: '#2d3748', color: '#fff' }}
+                  value={mcqWeight} 
+                  onChange={(e) => {
+                    let val = parseInt(e.target.value) || 0;
+                    if (val > 100) val = 100;
+                    if (val < 0) val = 0;
+                    setMcqWeight(val);
+                    setFillWeight(100 - val);
+                  }}
+                />
+              </div>
+              <div className="form-group" style={{ flex: '1', minWidth: '160px', maxWidth: '220px', textAlign: 'left', marginBottom: '0' }}>
+                <label style={{ fontSize: '0.85rem', fontWeight: 'bold', letterSpacing: '0.5px', textTransform: 'uppercase', display: 'block', marginBottom: '0.5rem', color: '#a0aec0' }}>Fill-in-Blanks Weight (%)</label>
+                <input 
+                  type="number" 
+                  className="input" 
+                  style={{ width: '100%', padding: '0.7rem', borderRadius: '6px', border: '1px solid #4a5568', backgroundColor: '#2d3748', color: '#fff' }}
+                  value={fillWeight} 
+                  onChange={(e) => {
+                    let val = parseInt(e.target.value) || 0;
+                    if (val > 100) val = 100;
+                    if (val < 0) val = 0;
+                    setFillWeight(val);
+                    setMcqWeight(100 - val);
+                  }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="text-center mt-3">
             <button

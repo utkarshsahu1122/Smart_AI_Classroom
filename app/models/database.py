@@ -19,7 +19,8 @@ def init_db(app):
 
     mongo_uri = os.environ.get('MONGO_URI')
     if not mongo_uri:
-        raise Exception("MONGO_URI environment variable is not set")
+        print("[Warning] MONGO_URI environment variable is not set. Starting without database.")
+        return
 
     db_name = os.environ.get('MONGO_DB_NAME', 'smart_classroom')
 
@@ -27,14 +28,23 @@ def init_db(app):
 
     try:
         _client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-        # Force a connection test
-        _client.admin.command('ping')
+        # CosmosDB compatibility: wrap ping
+        try:
+            _client.admin.command('ping')
+        except Exception as e:
+            print(f"[Warning] CosmosDB ping failed or unsupported: {e}")
+            
         _db = _client[db_name]
-        print("Connected to MongoDB Atlas")
-        _create_indexes()
+        print("Connected to MongoDB Atlas / CosmosDB")
+        
+        # CosmosDB compatibility: wrap overall index creation
+        try:
+            _create_indexes()
+        except Exception as e:
+            print(f"[Warning] Failed to initialize indexes: {e}")
+            
     except Exception as e:
-        print("MongoDB connection failed")
-        sys.exit(1)
+        print(f"[Warning] MongoDB connection failed: {e}. Starting without database connection.")
 
 
 def get_db():
@@ -48,21 +58,27 @@ def _create_indexes():
     """Create indexes on frequently queried fields for performance."""
     db = get_db()
 
+    def safe_create_index(collection, *args, **kwargs):
+        try:
+            collection.create_index(*args, **kwargs)
+        except Exception as e:
+            print(f"[Warning] Index creation failed on {collection.name} (CosmosDB compatibility): {e}")
+
     # Quiz collections
-    db.quiz_sessions.create_index("session_code", unique=True)
-    db.quiz_questions.create_index("session_id")
-    db.students.create_index([("session_id", 1), ("roll_no", 1)], unique=True)
-    db.student_questions.create_index("student_id")
-    db.student_questions.create_index("question_id")
+    safe_create_index(db.quiz_sessions, "session_code", unique=True)
+    safe_create_index(db.quiz_questions, "session_id")
+    safe_create_index(db.students, [("session_id", 1), ("roll_no", 1)], unique=True)
+    safe_create_index(db.student_questions, "student_id")
+    safe_create_index(db.student_questions, "question_id")
 
     # Doubt solver collections
-    db.student_profiles.create_index("roll_no", unique=True)
-    db.student_documents.create_index("student_id")
-    db.doubt_chat_sessions.create_index("student_id")
-    db.doubt_chat_sessions.create_index("document_id")
-    db.chat_messages.create_index("session_id")
+    safe_create_index(db.student_profiles, "roll_no", unique=True)
+    safe_create_index(db.student_documents, "student_id")
+    safe_create_index(db.doubt_chat_sessions, "student_id")
+    safe_create_index(db.doubt_chat_sessions, "document_id")
+    safe_create_index(db.chat_messages, "session_id")
 
-    print("[MongoDB] Indexes created/verified.")
+    print("[MongoDB] Indexes creation attempted (CosmosDB compatibility mode).")
 
 
 def to_str_id(doc):

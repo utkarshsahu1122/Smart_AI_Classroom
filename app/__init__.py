@@ -8,7 +8,11 @@ def create_app():
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'smart-classroom-secret-key-2026')
 
     # Enable CORS for React dev server
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+    supports_credentials=True
+)
 
     # Initialize MongoDB connection
     from .models.database import init_db

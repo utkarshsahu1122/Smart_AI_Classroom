@@ -49,6 +49,8 @@ function FacultyDashboard() {
     formData.append('fill_weight', fillWeight)
 
     try {
+      console.log("API_BASE =", API_BASE)
+
       const res = await fetch(`${API_BASE}/api/faculty/upload`, {
         method: 'POST',
         body: formData,

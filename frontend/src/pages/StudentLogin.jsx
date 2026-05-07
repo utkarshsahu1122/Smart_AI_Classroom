@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { API_BASE } from '../config'
 
 function StudentLogin() {
   const [searchParams] = useSearchParams()
@@ -9,8 +10,6 @@ function StudentLogin() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const navigate = useNavigate()
-
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
   // If a quiz is already active, redirect straight to it
   useEffect(() => {

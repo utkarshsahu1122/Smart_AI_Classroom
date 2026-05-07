@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { API_BASE } from '../config'
 
 function FacultyDashboard() {
   const [file, setFile] = useState(null)
@@ -10,8 +11,6 @@ function FacultyDashboard() {
   const [fillWeight, setFillWeight] = useState(30)
   const fileInputRef = useRef(null)
   const navigate = useNavigate()
-
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
   const handleFileChange = (e) => {
     const selected = e.target.files[0]

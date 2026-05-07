@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { API_BASE } from '../config'
 
 const STORAGE_KEY = 'active_quiz_state'
 
@@ -25,7 +26,6 @@ function QuizView() {
 
   const studentId = sessionStorage.getItem('student_id')
   const sessionId = sessionStorage.getItem('session_id')
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
   // ─── Refs for stable callbacks ──────────────────
   const answersRef = useRef({})

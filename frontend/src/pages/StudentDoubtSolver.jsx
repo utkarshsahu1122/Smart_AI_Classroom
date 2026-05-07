@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import ChatBubble from '../components/ChatBubble'
 import ChatHistorySidebar from '../components/ChatHistorySidebar'
+import { API_BASE } from '../config'
 
 // ─── Token helpers ────────────────────────────────
 function getToken() { return localStorage.getItem('doubt_token') }
@@ -10,7 +11,6 @@ function getHeaders() {
     'Authorization': `Bearer ${getToken()}`,
   }
 }
-const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 async function authFetch(url, opts = {}) {
   const token = localStorage.getItem('doubt_token')
@@ -19,7 +19,8 @@ async function authFetch(url, opts = {}) {
     headers['Authorization'] = `Bearer ${token}`
   }
   try {
-    const res = await fetch(`${API_BASE}${url}`, { ...opts, headers })
+    const cleanUrl = url.startsWith('/') ? url : `/${url}`
+    const res = await fetch(`${API_BASE}${cleanUrl}`, { ...opts, headers })
     if (res.status === 401) {
       localStorage.removeItem('doubt_token')
       localStorage.removeItem('doubt_student_id')

@@ -178,9 +178,10 @@ def end_session(session_code):
 
 @bp.route('/session/<session_code>/report')
 def download_report(session_code):
-    """Generate and download a .csv Excel report for the quiz session."""
-    import csv
-    from io import StringIO
+    """Generate and download a .docx Word report for the quiz session."""
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     quiz_session = get_quiz_session_by_code(session_code)
     if not quiz_session:
@@ -188,62 +189,90 @@ def download_report(session_code):
 
     students = get_students_by_session(quiz_session["id"])
 
-    si = StringIO()
-    cw = csv.writer(si)
+    doc = Document()
 
-    # --- Session Info ---
-    cw.writerow(['QUIZ SESSION REPORT'])
-    cw.writerow(['Session Code', quiz_session['session_code']])
-    cw.writerow(['PDF Document', quiz_session['pdf_filename']])
-    cw.writerow(['Created At', to_local(quiz_session['created_at'])])
-    cw.writerow(['Status', 'Ended' if not quiz_session.get('is_active') else 'Active'])
-    cw.writerow(['Total Students', len(students)])
-    cw.writerow([])
+    title = doc.add_heading('Quiz Session Report', level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # --- Student Results Table ---
-    cw.writerow(['S.No', 'Roll No', 'Name', 'Score', 'Total Assigned', 'Submitted At', 'Integrity Status', 'Proctor Warnings'])
+    doc.add_heading('Session Information', level=2)
+    info_table = doc.add_table(rows=5, cols=2, style='Light Shading Accent 1')
+    info_data = [
+        ('Session Code', quiz_session['session_code']),
+        ('PDF Document', quiz_session['pdf_filename']),
+        ('Created At', to_local(quiz_session['created_at'])),
+        ('Status', 'Ended' if not quiz_session.get('is_active') else 'Active'),
+        ('Total Students', str(len(students))),
+    ]
+    for i, (label, value) in enumerate(info_data):
+        info_table.rows[i].cells[0].text = label
+        info_table.rows[i].cells[1].text = value
+        for cell in info_table.rows[i].cells:
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(11)
 
-    total_q = 20  # default
+    doc.add_paragraph('')
+
+    doc.add_heading('Student Results', level=2)
+
     if students:
+        result_table = doc.add_table(rows=1, cols=5, style='Light Shading Accent 1')
+        hdr_cells = result_table.rows[0].cells
+        hdr_cells[0].text = 'S.No'
+        hdr_cells[1].text = 'Roll No'
+        hdr_cells[2].text = 'Name'
+        hdr_cells[3].text = 'Score'
+        hdr_cells[4].text = 'Submitted At'
+
         for idx, student in enumerate(students, 1):
-            assigned_count = count_assigned_questions(student["id"])
-            total_q = assigned_count or 20
+            row = result_table.add_row()
+            total_q = count_assigned_questions(student["id"]) or 20
             submitted = to_local(student['submitted_at']) if student.get('submitted_at') else 'Not Submitted'
-            status = 'UNFAIR MEANS' if student.get('unfair_means') else 'Fair'
-
-            cw.writerow([
-                idx,
-                student['roll_no'],
-                student['name'],
-                student.get('score', 0) if student.get('submitted_at') else '—',
-                total_q,
-                submitted,
-                status,
-                student.get('warning_count', 0),
-            ])
+            values = [str(idx), student['roll_no'], student['name'], f"{student.get('score', 0)}/{total_q}", submitted]
+            for i, val in enumerate(values):
+                cell = row.cells[i]
+                cell.text = val
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.font.size = Pt(10)
     else:
-        cw.writerow(['No students participated in this session.'])
+        doc.add_paragraph('No students participated in this session.')
 
-    cw.writerow([])
+    doc.add_paragraph('')
 
     # --- Summary Statistics ---
     if students:
         scores = [s.get('score', 0) for s in students if s.get('submitted_at')]
         if scores:
-            cw.writerow(['SUMMARY STATISTICS'])
-            avg_score = sum(scores) / len(scores)
-            cw.writerow(['Average Score', f"{avg_score:.1f}"])
-            cw.writerow(['Highest Score', max(scores)])
-            cw.writerow(['Lowest Score', min(scores)])
-
+            doc.add_heading('Summary Statistics', level=2)
+            total_q = count_assigned_questions(students[0]["id"]) or 20
+            stats_para = doc.add_paragraph()
+            stats_para.add_run('Average Score: ').bold = True
+            stats_para.add_run(f'{sum(scores)/len(scores):.1f}/{total_q}\n')
+            stats_para.add_run('Highest Score: ').bold = True
+            stats_para.add_run(f'{max(scores)}/{total_q}\n')
+            stats_para.add_run('Lowest Score: ').bold = True
+            stats_para.add_run(f'{min(scores)}/{total_q}\n')
+            
             pass_threshold = total_q / 2
+            stats_para.add_run(f'Pass Rate (≥{pass_threshold}): ').bold = True
             pass_count = sum(1 for s in scores if s >= pass_threshold)
-            cw.writerow(['Pass Rate (>=50%)', f"{pass_count}/{len(scores)} ({pass_count/len(scores)*100:.0f}%)"])
+            stats_para.add_run(f'{pass_count}/{len(scores)} ({pass_count/len(scores)*100:.0f}%)')
 
-    output = si.getvalue()
+    doc.add_paragraph('')
+    footer = doc.add_paragraph(f'Report generated on {datetime.utcnow().strftime("%d-%m-%Y %H:%M")} UTC')
+    footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    for run in footer.runs:
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(150, 150, 150)
 
-    return Response(
-        output,
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment;filename=Quiz_Report_{session_code}.csv"}
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    filename = f"Quiz_Report_{session_code}.docx"
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     )
